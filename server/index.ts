@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
 import { join, normalize } from "node:path";
-import { fetchTranscript, TranscriptError } from "./transcript.ts";
+import { fetchTranscript, listCaptions, TranscriptError } from "./transcript.ts";
+
+type CaptionSource = "manual" | "automatic";
 
 const port = Number(Bun.env.PORT || 3000);
 const distRoot = join(import.meta.dir, "..", "dist");
@@ -15,6 +17,10 @@ const server = Bun.serve({
       return handleTranscript(request);
     }
 
+    if (url.pathname === "/api/captions" && request.method === "POST") {
+      return handleCaptions(request);
+    }
+
     if (url.pathname.startsWith("/api/")) {
       return json({ error: "APIが見つかりません。" }, 404);
     }
@@ -25,7 +31,7 @@ const server = Bun.serve({
 
 console.log(`YouTube Transcript Exporter: http://${server.hostname}:${server.port}`);
 
-async function handleTranscript(request: Request) {
+async function handleCaptions(request: Request) {
   try {
     const body = (await request.json()) as { url?: unknown };
 
@@ -33,7 +39,28 @@ async function handleTranscript(request: Request) {
       throw new TranscriptError("YouTube URLを入力してください。");
     }
 
-    const transcript = await fetchTranscript(body.url.trim());
+    const captions = await listCaptions(body.url.trim());
+    return json(captions);
+  } catch (error) {
+    if (error instanceof TranscriptError) {
+      return json({ error: error.message }, error.status);
+    }
+
+    return json({ error: "予期しないエラーが発生しました。" }, 500);
+  }
+}
+
+async function handleTranscript(request: Request) {
+  try {
+    const body = (await request.json()) as { url?: unknown; language?: unknown; source?: unknown };
+
+    if (typeof body.url !== "string") {
+      throw new TranscriptError("YouTube URLを入力してください。");
+    }
+
+    const source = parseCaptionSource(body.source);
+    const caption = typeof body.language === "string" && source ? { language: body.language, source } : undefined;
+    const transcript = await fetchTranscript(body.url.trim(), caption);
     return json(transcript);
   } catch (error) {
     if (error instanceof TranscriptError) {
@@ -42,6 +69,14 @@ async function handleTranscript(request: Request) {
 
     return json({ error: "予期しないエラーが発生しました。" }, 500);
   }
+}
+
+function parseCaptionSource(value: unknown): CaptionSource | null {
+  if (value === "manual" || value === "automatic") {
+    return value;
+  }
+
+  return null;
 }
 
 async function serveStatic(pathname: string) {

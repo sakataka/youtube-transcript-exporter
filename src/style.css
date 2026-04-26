@@ -145,6 +145,10 @@ textarea:focus {
   outline: 3px solid rgba(47, 128, 237, 0.18);
 }
 
+input[type="radio"]:focus {
+  outline: 3px solid rgba(47, 128, 237, 0.18);
+}
+
 .hint {
   margin: 10px 0 0;
   color: #6b7785;
@@ -202,10 +206,82 @@ textarea:focus {
   font-weight: 700;
 }
 
+.caption-panel {
+  border-bottom: 1px solid #e2e7ec;
+  padding: 14px 18px 18px;
+}
+
+.caption-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.caption-panel-header h3 {
+  margin: 0;
+  color: #17202a;
+  font-size: 1rem;
+}
+
+.caption-panel-header span {
+  color: #607080;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.caption-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.caption-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid #cfd6dd;
+  border-radius: 8px;
+  background: #fbfcfd;
+  cursor: pointer;
+  min-height: 68px;
+  padding: 12px;
+}
+
+.caption-option:has(input:checked) {
+  border-color: #2f80ed;
+  background: #f1f7ff;
+}
+
+.caption-option input {
+  width: 18px;
+  min-height: 18px;
+  margin: 3px 0 0;
+}
+
+.caption-option-body {
+  display: grid;
+  min-width: 0;
+}
+
+.caption-option-body strong {
+  color: #17202a;
+  overflow-wrap: anywhere;
+}
+
+.caption-option-body span {
+  color: #607080;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
 textarea {
   display: block;
   width: 100%;
-  height: 540px;
+  height: 440px;
   resize: vertical;
   border: 0;
   padding: 18px;
@@ -240,6 +316,6 @@ textarea {
   }
 
   textarea {
-    height: 420px;
+    height: 360px;
   }
 }

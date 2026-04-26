@@ -42,18 +42,21 @@ describe("chooseCaptionTrack", () => {
     expect(track?.language).toBe("en");
   });
 
-  test("自動翻訳の日本語より元言語の英語を優先する", () => {
+  test("自動翻訳字幕は選択候補から除外する", () => {
     const tracks = rankCaptionTracks({
       subtitles: {
-        "en-US": [{ ext: "vtt", url: "https://example.com/en.vtt" }]
+        "en-US": [{ ext: "vtt", url: "https://example.com/en.vtt" }],
+        "zh-Hans": [{ ext: "vtt", url: "https://example.com/zh-manual.vtt" }]
       },
       automatic_captions: {
+        "zh-Hans": [{ ext: "vtt", url: "https://example.com/zh-auto.vtt" }],
         "ja-zh-Hans": [{ ext: "vtt", url: "https://example.com/ja-translated.vtt" }]
       }
     });
 
     expect(tracks[0]?.language).toBe("en-US");
-    expect(tracks.at(-1)?.language).toBe("ja-zh-Hans");
+    expect(tracks.map((track) => track.language)).toEqual(["en-US", "zh-Hans"]);
+    expect(tracks.map((track) => track.source)).toEqual(["manual", "manual"]);
   });
 });
 

@@ -1,11 +1,13 @@
 export type CaptionTrack = {
   language: string;
+  name: string;
   source: "manual" | "automatic";
   url: string;
 };
 
 type YtDlpCaption = {
   ext?: string;
+  name?: string;
   url?: string;
 };
 
@@ -20,7 +22,21 @@ export type TranscriptResult = {
   videoId: string;
   title: string;
   language: string;
+  source: CaptionTrack["source"];
   text: string;
+};
+
+export type CaptionOption = {
+  language: string;
+  name: string;
+  source: CaptionTrack["source"];
+  isAutoCaption: boolean;
+};
+
+export type CaptionListResult = {
+  videoId: string;
+  title: string;
+  captions: CaptionOption[];
 };
 
 export class TranscriptError extends Error {
@@ -67,10 +83,7 @@ export function chooseCaptionTrack(info: YtDlpInfo): CaptionTrack | null {
 }
 
 export function rankCaptionTracks(info: YtDlpInfo): CaptionTrack[] {
-  const tracks = [
-    ...collectTracks(info.subtitles, "manual" as const),
-    ...collectTracks(info.automatic_captions, "automatic" as const)
-  ];
+  const tracks = getSelectableTracks(info);
 
   if (tracks.length === 0) {
     return [];
@@ -143,13 +156,43 @@ export function parseVttToPlainText(vtt: string) {
   return stripTranscriptNotices(result).join("\n").trim();
 }
 
-export async function fetchTranscript(url: string): Promise<TranscriptResult> {
+export async function listCaptions(url: string): Promise<CaptionListResult> {
   const videoId = parseYouTubeVideoId(url);
   const info = await getYtDlpInfo(url);
-  const tracks = rankCaptionTracks(info);
+  const tracks = getSelectableTracks(info);
 
   if (tracks.length === 0) {
     throw new TranscriptError("字幕が見つかりません。");
+  }
+
+  return {
+    videoId: info.id || videoId,
+    title: info.title || videoId,
+    captions: tracks.map(({ language, name, source }) => ({
+      language,
+      name,
+      source,
+      isAutoCaption: source === "automatic"
+    }))
+  };
+}
+
+export async function fetchTranscript(
+  url: string,
+  requestedCaption?: Pick<CaptionOption, "language" | "source">
+): Promise<TranscriptResult> {
+  const videoId = parseYouTubeVideoId(url);
+  const info = await getYtDlpInfo(url);
+  const tracks = requestedCaption
+    ? getSelectableTracks(info).filter(
+        (track) => track.language === requestedCaption.language && track.source === requestedCaption.source
+      )
+    : rankCaptionTracks(info);
+
+  if (tracks.length === 0) {
+    throw new TranscriptError(
+      requestedCaption ? "選択された字幕が見つかりません。" : "字幕が見つかりません。"
+    );
   }
 
   for (const track of tracks) {
@@ -173,11 +216,24 @@ export async function fetchTranscript(url: string): Promise<TranscriptResult> {
       videoId: info.id || videoId,
       title: info.title || videoId,
       language: track.language,
+      source: track.source,
       text
     };
   }
 
   throw new TranscriptError("字幕データを取得できませんでした。", 502);
+}
+
+function getSelectableTracks(info: YtDlpInfo) {
+  const manualTracks = collectTracks(info.subtitles, "manual" as const).filter(
+    (track) => !isTranslatedCaption(track.language)
+  );
+  const manualLanguages = new Set(manualTracks.map((track) => track.language));
+  const automaticTracks = collectTracks(info.automatic_captions, "automatic" as const).filter(
+    (track) => !isTranslatedCaption(track.language) && !manualLanguages.has(track.language)
+  );
+
+  return [...manualTracks, ...automaticTracks];
 }
 
 async function getYtDlpInfo(url: string): Promise<YtDlpInfo> {
@@ -234,6 +290,7 @@ function collectTracks(
     if (selected?.url) {
       tracks.push({
         language,
+        name: selected.name || language,
         source,
         url: selected.url
       });
