@@ -228,9 +228,8 @@ function getSelectableTracks(info: YtDlpInfo) {
   const manualTracks = collectTracks(info.subtitles, "manual" as const).filter(
     (track) => !isTranslatedCaption(track.language)
   );
-  const manualLanguages = new Set(manualTracks.map((track) => track.language));
   const automaticTracks = collectTracks(info.automatic_captions, "automatic" as const).filter(
-    (track) => !isTranslatedCaption(track.language) && !manualLanguages.has(track.language)
+    (track) => !isTranslatedCaption(track.language)
   );
 
   return [...manualTracks, ...automaticTracks];

@@ -55,8 +55,48 @@ describe("chooseCaptionTrack", () => {
     });
 
     expect(tracks[0]?.language).toBe("en-US");
-    expect(tracks.map((track) => track.language)).toEqual(["en-US", "zh-Hans"]);
-    expect(tracks.map((track) => track.source)).toEqual(["manual", "manual"]);
+    expect(tracks.map((track) => `${track.language}:${track.source}`)).toEqual([
+      "en-US:manual",
+      "zh-Hans:manual",
+      "zh-Hans:automatic"
+    ]);
+  });
+
+  test("手動字幕と同じ言語の自動生成字幕も選択候補に残す", () => {
+    const tracks = rankCaptionTracks({
+      subtitles: {
+        ja: [{ ext: "vtt", url: "https://example.com/ja-manual.vtt" }],
+        en: [{ ext: "vtt", url: "https://example.com/en-manual.vtt" }]
+      },
+      automatic_captions: {
+        ja: [{ ext: "vtt", url: "https://example.com/ja-auto.vtt" }],
+        fr: [{ ext: "vtt", url: "https://example.com/fr-auto.vtt" }]
+      }
+    });
+
+    expect(tracks.map((track) => `${track.language}:${track.source}`)).toEqual([
+      "ja:manual",
+      "en:manual",
+      "ja:automatic",
+      "fr:automatic"
+    ]);
+  });
+
+  test("複数言語と字幕種別が混在しても言語と種別で取得対象を指定できる", () => {
+    const tracks = rankCaptionTracks({
+      subtitles: {
+        ja: [{ ext: "vtt", url: "https://example.com/ja-manual.vtt" }],
+        en: [{ ext: "vtt", url: "https://example.com/en-manual.vtt" }]
+      },
+      automatic_captions: {
+        ja: [{ ext: "vtt", url: "https://example.com/ja-auto.vtt" }],
+        en: [{ ext: "vtt", url: "https://example.com/en-auto.vtt" }]
+      }
+    });
+
+    const selected = tracks.find((track) => track.language === "en" && track.source === "automatic");
+
+    expect(selected?.url).toBe("https://example.com/en-auto.vtt");
   });
 });
 
