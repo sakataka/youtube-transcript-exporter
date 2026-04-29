@@ -50,6 +50,7 @@ describe("chooseCaptionTrack", () => {
       },
       automatic_captions: {
         "zh-Hans": [{ ext: "vtt", url: "https://example.com/zh-auto.vtt" }],
+        ja: [{ ext: "vtt", url: "https://example.com/translated.vtt?lang=en&tlang=ja" }],
         "ja-zh-Hans": [{ ext: "vtt", url: "https://example.com/ja-translated.vtt" }]
       }
     });
@@ -79,6 +80,28 @@ describe("chooseCaptionTrack", () => {
       "en:manual",
       "ja:automatic",
       "fr:automatic"
+    ]);
+  });
+
+  test("同じ言語と種別の候補は重複排除しつつ手動字幕と自動字幕は両方残す", () => {
+    const tracks = rankCaptionTracks({
+      subtitles: {
+        en: [
+          { ext: "vtt", url: "https://example.com/en-manual.vtt" },
+          { ext: "srv3", url: "https://example.com/en-manual.srv3" }
+        ]
+      },
+      automatic_captions: {
+        en: [
+          { ext: "vtt", url: "https://example.com/en-auto.vtt" },
+          { ext: "srv3", url: "https://example.com/en-auto.srv3" }
+        ]
+      }
+    });
+
+    expect(tracks.map((track) => `${track.language}:${track.source}:${track.url}`)).toEqual([
+      "en:manual:https://example.com/en-manual.vtt",
+      "en:automatic:https://example.com/en-auto.vtt"
     ]);
   });
 

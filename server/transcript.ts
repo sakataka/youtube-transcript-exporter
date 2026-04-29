@@ -225,14 +225,10 @@ export async function fetchTranscript(
 }
 
 function getSelectableTracks(info: YtDlpInfo) {
-  const manualTracks = collectTracks(info.subtitles, "manual" as const).filter(
-    (track) => !isTranslatedCaption(track.language)
-  );
-  const automaticTracks = collectTracks(info.automatic_captions, "automatic" as const).filter(
-    (track) => !isTranslatedCaption(track.language)
-  );
+  const manualTracks = collectTracks(info.subtitles, "manual" as const);
+  const automaticTracks = collectTracks(info.automatic_captions, "automatic" as const);
 
-  return [...manualTracks, ...automaticTracks];
+  return dedupeCaptionTracks([...manualTracks, ...automaticTracks]);
 }
 
 async function getYtDlpInfo(url: string): Promise<YtDlpInfo> {
@@ -284,7 +280,8 @@ function collectTracks(
   const tracks: CaptionTrack[] = [];
 
   for (const [language, formats] of Object.entries(captions)) {
-    const selected = formats.find((format) => format.ext === "vtt" && format.url) ?? formats.find((format) => format.url);
+    const selectableFormats = formats.filter((format) => isSelectableCaptionFormat(language, format));
+    const selected = selectableFormats.find((format) => format.ext === "vtt") ?? selectableFormats[0];
 
     if (selected?.url) {
       tracks.push({
@@ -297,6 +294,24 @@ function collectTracks(
   }
 
   return tracks;
+}
+
+function dedupeCaptionTracks(tracks: CaptionTrack[]) {
+  const seen = new Set<string>();
+  const deduped: CaptionTrack[] = [];
+
+  for (const track of tracks) {
+    const key = `${track.language.toLowerCase()}:${track.source}`;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    deduped.push(track);
+  }
+
+  return deduped;
 }
 
 function findPreferredLanguage(tracks: CaptionTrack[], language: string) {
@@ -324,6 +339,22 @@ function isTranslatedCaption(language: string) {
   }
 
   return parts.at(-2) === "zh" || /^[a-z]{2,3}$/.test(parts.at(-2) ?? "");
+}
+
+function isSelectableCaptionFormat(language: string, caption: YtDlpCaption) {
+  return Boolean(caption.url) && !isTranslatedCaption(language) && !hasTranslationTarget(caption.url);
+}
+
+function hasTranslationTarget(url: string | undefined) {
+  if (!url) {
+    return false;
+  }
+
+  try {
+    return new URL(url).searchParams.has("tlang");
+  } catch {
+    return /(?:[?&])tlang=/.test(url);
+  }
 }
 
 function normalizeVideoId(value: string | null | undefined) {

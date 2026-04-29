@@ -80,6 +80,7 @@ app.innerHTML = `
           <button id="transcript-button" type="button" disabled>選択した字幕を取得</button>
           <button id="copy-button" type="button" disabled>コピー</button>
           <button id="download-button" type="button" disabled>TXT保存</button>
+          <button id="markdown-button" type="button" disabled>Markdown保存</button>
         </div>
       </div>
 
@@ -107,6 +108,7 @@ const captionButton = document.querySelector<HTMLButtonElement>("#caption-button
 const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-button")!;
 const copyButton = document.querySelector<HTMLButtonElement>("#copy-button")!;
 const downloadButton = document.querySelector<HTMLButtonElement>("#download-button")!;
+const markdownButton = document.querySelector<HTMLButtonElement>("#markdown-button")!;
 const captionPanel = document.querySelector<HTMLElement>("#caption-panel")!;
 const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
 const captionCount = document.querySelector<HTMLElement>("#caption-count")!;
@@ -226,6 +228,7 @@ transcriptButton.addEventListener("click", async () => {
     charCount.textContent = payload.text.length.toLocaleString("ja-JP");
     copyButton.disabled = payload.text.length === 0;
     downloadButton.disabled = payload.text.length === 0;
+    markdownButton.disabled = payload.text.length === 0;
     message.classList.remove("error");
     message.textContent = "取得しました。コピーまたはTXT保存できます。";
   } catch {
@@ -263,15 +266,45 @@ downloadButton.addEventListener("click", () => {
     return;
   }
 
-  const blob = new Blob([latestTranscript.text], { type: "text/plain;charset=utf-8" });
-  const href = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = href;
-  link.download = `${safeFileName(latestTranscript.title || latestTranscript.videoId)}-${latestTranscript.language}.txt`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(href);
+  downloadTextFile(
+    latestTranscript.text,
+    `${safeFileName(latestTranscript.title || latestTranscript.videoId)}-${latestTranscript.language}.txt`,
+    "text/plain;charset=utf-8"
+  );
+});
+
+markdownButton.addEventListener("click", () => {
+  if (!latestTranscript) {
+    return;
+  }
+
+  const captionLabel = selectedCaption
+    ? formatCaptionLabel({
+        language: latestTranscript.language,
+        name: selectedCaption.name,
+        source: latestTranscript.source,
+        isAutoCaption: latestTranscript.source === "automatic"
+      })
+    : `${latestTranscript.language} (${latestTranscript.source === "manual" ? "字幕" : "自動字幕"})`;
+
+  const markdown = [
+    `# ${latestTranscript.title || latestTranscript.videoId}`,
+    "",
+    `- URL: ${urlInput.value.trim()}`,
+    `- Video ID: ${latestTranscript.videoId}`,
+    `- Caption: ${captionLabel}`,
+    `- Characters: ${latestTranscript.text.length.toLocaleString("ja-JP")}`,
+    "",
+    "## Transcript",
+    "",
+    latestTranscript.text
+  ].join("\n");
+
+  downloadTextFile(
+    markdown,
+    `${safeFileName(latestTranscript.title || latestTranscript.videoId)}-${latestTranscript.language}.md`,
+    "text/markdown;charset=utf-8"
+  );
 });
 
 function renderCaptionOptions(captions: CaptionOption[]) {
@@ -329,6 +362,7 @@ function clearTranscript() {
   output.value = "";
   copyButton.disabled = true;
   downloadButton.disabled = true;
+  markdownButton.disabled = true;
 }
 
 function showError(text: string) {
@@ -338,6 +372,7 @@ function showError(text: string) {
   output.value = "";
   copyButton.disabled = true;
   downloadButton.disabled = true;
+  markdownButton.disabled = true;
 }
 
 function updateSelectedLanguage() {
@@ -354,6 +389,18 @@ function safeFileName(value: string) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 80) || "transcript";
+}
+
+function downloadTextFile(content: string, fileName: string, type: string) {
+  const blob = new Blob([content], { type });
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(href);
 }
 
 function escapeHtml(value: string) {
