@@ -634,6 +634,13 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
       : [];
 
   return [
+    "以下のYouTube動画字幕をもとに、必ず次の2つを順番に行ってください。",
+    "1. まず、文章で動画の内容を説明・整理してください。",
+    "2. その後、説明とは別に、動画内容を1枚にまとめた画像を生成してください。",
+    "",
+    "最初から画像だけを生成せず、必ず文章での説明を先に出力してください。",
+    "",
+    "文章での説明指示:",
     template.instruction,
     "",
     "動画情報:",
@@ -649,7 +656,8 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
 
 function buildImageGenerationInstruction(template: PromptTemplate) {
   return [
-    "最後に、上記の解説内容をもとに、この動画の内容を1枚の画像として生成してください。",
+    "画像生成指示:",
+    "文章での説明が終わった後に、上記の解説内容をもとに、この動画の内容を1枚の画像として生成してください。",
     `画像は「${template.label}」の用途に合う構成にしてください。`,
     template.description ? `重視する観点: ${template.description}` : null,
     "単なる装飾画像ではなく、動画の要点、話の流れ、重要な主張や関係性が一目でわかる情報整理画像にしてください。",
