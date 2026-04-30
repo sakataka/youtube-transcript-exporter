@@ -28,6 +28,13 @@ type TranscriptSuccess = {
   publishedDate?: string;
   duration?: string;
   text: string;
+  timedSegments: TimedTranscriptSegment[];
+};
+
+type TimedTranscriptSegment = {
+  startSeconds: number;
+  startLabel: string;
+  text: string;
 };
 
 type ApiFailure = {
@@ -891,6 +898,10 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     "文章での説明指示:",
     template.instruction,
     "",
+    "補足情報の扱い:",
+    "動画字幕だけでは固有名詞、出来事、製品名、人物名、専門用語、時事的背景が不明確な場合は、必要に応じてインターネット上の信頼できる情報も参照して補足してください。",
+    "ただし、字幕から読み取れる内容と外部情報から補った内容は混同せず、不確かな点は不確かだと明示してください。",
+    "",
     "動画情報:",
     ...metadata,
     ...caution,
@@ -898,8 +909,12 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     "字幕:",
     transcript.text,
     "",
+    buildTimedReference(transcript),
+    "",
     buildImageGenerationInstruction(template)
-  ].join("\n");
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
 }
 
 function buildImageGenerationInstruction(template: PromptTemplate) {
@@ -909,10 +924,72 @@ function buildImageGenerationInstruction(template: PromptTemplate) {
     `画像は「${template.label}」の用途に合う構成にしてください。`,
     template.description ? `重視する観点: ${template.description}` : null,
     "単なる装飾画像ではなく、動画の要点、話の流れ、重要な主張や関係性が一目でわかる情報整理画像にしてください。",
+    "このツールは個人利用が前提です。必要であれば、インターネット上で公開されている公式画像、製品画像、人物写真、イベント写真なども参考画像または素材候補として採用して構いません。",
+    "権利や出典に注意が必要そうな画像を使う場合は、回答内でその旨を簡潔に補足してください。",
     "日本語の見出しと短いラベルを使い、読みやすいインフォグラフィックまたは図解として作成してください。"
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function buildTimedReference(transcript: TranscriptSuccess) {
+  const references = buildTimedReferenceEntries(transcript);
+
+  if (references.length === 0) {
+    return null;
+  }
+
+  return [
+    "時間付き参照:",
+    "以下は後で動画内の該当箇所を探しやすくするための、おおよその時間と字幕内容の対応です。回答で流れや根拠を説明するときは、必要に応じてこの時間またはリンクも添えてください。厳密な秒単位の一致までは要求しません。",
+    ...references
+  ].join("\n");
+}
+
+function buildTimedReferenceEntries(transcript: TranscriptSuccess) {
+  const segments = transcript.timedSegments ?? [];
+
+  if (segments.length === 0) {
+    return [];
+  }
+
+  const grouped: TimedTranscriptSegment[] = [];
+  let currentWindow = -1;
+
+  for (const segment of segments) {
+    const window = Math.floor(segment.startSeconds / 30);
+    if (window === currentWindow && grouped.length > 0) {
+      const last = grouped[grouped.length - 1];
+      last.text = `${last.text} ${segment.text}`;
+      continue;
+    }
+
+    currentWindow = window;
+    grouped.push({ ...segment });
+  }
+
+  return grouped.map((segment) => {
+    const text = truncateForTimedReference(segment.text);
+    return `- ${segment.startLabel} (${buildTimestampUrl(segment.startSeconds)}): ${text}`;
+  });
+}
+
+function truncateForTimedReference(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > 180 ? `${normalized.slice(0, 180)}...` : normalized;
+}
+
+function buildTimestampUrl(startSeconds: number) {
+  const rawUrl = urlInput.value.trim();
+
+  try {
+    const url = new URL(rawUrl);
+    url.searchParams.set("t", `${Math.max(0, Math.floor(startSeconds))}s`);
+    return url.toString();
+  } catch {
+    const separator = rawUrl.includes("?") ? "&" : "?";
+    return `${rawUrl}${separator}t=${Math.max(0, Math.floor(startSeconds))}s`;
+  }
 }
 
 function renderPromptTemplates(selectedTemplateId = promptSettings.defaultTemplateId) {

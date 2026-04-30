@@ -59,6 +59,15 @@ pub struct TranscriptResult {
     pub language: String,
     pub source: CaptionSource,
     pub text: String,
+    pub timed_segments: Vec<TimedTranscriptSegment>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimedTranscriptSegment {
+    pub start_seconds: u64,
+    pub start_label: String,
+    pub text: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -176,7 +185,14 @@ pub async fn fetch_transcript(
         let Ok(body) = response.text().await else {
             continue;
         };
-        let text = parse_vtt_to_plain_text(&body);
+        let timed_segments = parse_vtt_to_timed_segments(&body);
+        let text = timed_segments
+            .iter()
+            .map(|segment| segment.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string();
 
         if text.is_empty() {
             continue;
@@ -196,6 +212,7 @@ pub async fn fetch_transcript(
             language: track.language,
             source: track.source,
             text,
+            timed_segments,
         });
     }
 
@@ -274,7 +291,18 @@ fn rank_caption_tracks(info: &YtDlpInfo) -> Vec<CaptionTrack> {
     ranked
 }
 
+#[cfg(test)]
 fn parse_vtt_to_plain_text(vtt: &str) -> String {
+    parse_vtt_to_timed_segments(vtt)
+        .iter()
+        .map(|segment| segment.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn parse_vtt_to_timed_segments(vtt: &str) -> Vec<TimedTranscriptSegment> {
     let mut result = Vec::new();
     let mut previous = String::new();
     let normalized = vtt.replace('\r', "");
@@ -297,6 +325,10 @@ fn parse_vtt_to_plain_text(vtt: &str) -> String {
         let Some(timing_index) = lines.iter().position(|line| line.contains("-->")) else {
             continue;
         };
+        let Some(start_seconds) = parse_cue_start_seconds(lines[timing_index]) else {
+            continue;
+        };
+        let mut cue_lines = Vec::new();
 
         for line in lines.iter().skip(timing_index + 1) {
             if starts_with_any_case(line, &["WEBVTT", "Kind:", "Language:"]) {
@@ -307,19 +339,28 @@ fn parse_vtt_to_plain_text(vtt: &str) -> String {
                 &strip_inline_timestamps(line),
             )));
 
-            if cleaned.is_empty() || cleaned == previous {
+            if cleaned.is_empty() {
                 continue;
             }
 
-            previous = cleaned.clone();
-            result.push(cleaned);
+            cue_lines.push(cleaned);
         }
+
+        let text = cue_lines.join(" ");
+
+        if text.is_empty() || text == previous {
+            continue;
+        }
+
+        previous = text.clone();
+        result.push(TimedTranscriptSegment {
+            start_seconds,
+            start_label: format_timestamp_label(start_seconds),
+            text,
+        });
     }
 
-    strip_transcript_notices(&result)
-        .join("\n")
-        .trim()
-        .to_string()
+    strip_transcript_notice_segments(&result)
 }
 
 async fn get_ytdlp_info(url: &str) -> Result<YtDlpInfo, TranscriptError> {
@@ -685,12 +726,14 @@ fn collapse_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn strip_transcript_notices(lines: &[String]) -> Vec<String> {
-    lines
+fn strip_transcript_notice_segments(
+    segments: &[TimedTranscriptSegment],
+) -> Vec<TimedTranscriptSegment> {
+    segments
         .iter()
         .enumerate()
-        .filter(|(index, line)| *index > 4 || !is_transcript_notice(line))
-        .map(|(_, line)| line.clone())
+        .filter(|(index, segment)| *index > 4 || !is_transcript_notice(&segment.text))
+        .map(|(_, segment)| segment.clone())
         .collect()
 }
 
@@ -716,6 +759,43 @@ fn starts_with_any_case(value: &str, prefixes: &[&str]) -> bool {
     prefixes
         .iter()
         .any(|prefix| lower.starts_with(&prefix.to_ascii_lowercase()))
+}
+
+fn parse_cue_start_seconds(timing_line: &str) -> Option<u64> {
+    let start = timing_line.split("-->").next()?.trim();
+    parse_vtt_timestamp_seconds(start)
+}
+
+fn parse_vtt_timestamp_seconds(value: &str) -> Option<u64> {
+    let timestamp = value.split_whitespace().next()?.replace(',', ".");
+    let parts = timestamp.split(':').collect::<Vec<_>>();
+    let (hours, minutes, seconds_part) = match parts.as_slice() {
+        [minutes, seconds] => (0, minutes.parse::<u64>().ok()?, *seconds),
+        [hours, minutes, seconds] => (
+            hours.parse::<u64>().ok()?,
+            minutes.parse::<u64>().ok()?,
+            *seconds,
+        ),
+        _ => return None,
+    };
+    let seconds = seconds_part
+        .split('.')
+        .next()
+        .and_then(|seconds| seconds.parse::<u64>().ok())?;
+
+    Some(hours * 3600 + minutes * 60 + seconds)
+}
+
+fn format_timestamp_label(total_seconds: u64) -> String {
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    }
 }
 
 fn classify_ytdlp_error(stderr: &str) -> &'static str {
@@ -922,6 +1002,39 @@ next-cue
         );
 
         assert_eq!(text, "Hello world\nSecond line");
+    }
+
+    #[test]
+    fn parses_timed_vtt_segments() {
+        let segments = parse_vtt_to_timed_segments(
+            r#"WEBVTT
+
+00:00:03.400 --> 00:00:05.000
+Opening
+
+00:10:00.000 --> 00:10:02.000
+Main point
+
+01:02:03.000 --> 01:02:04.000
+Long video point
+"#,
+        );
+
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| (
+                    segment.start_seconds,
+                    segment.start_label.as_str(),
+                    segment.text.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (3, "0:03", "Opening"),
+                (600, "10:00", "Main point"),
+                (3723, "1:02:03", "Long video point")
+            ]
+        );
     }
 
     #[test]
