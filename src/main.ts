@@ -149,6 +149,8 @@ const uiText = {
     selectedLanguage: "選択言語",
     characterCount: "文字数",
     copyPrompt: "コピープロンプト",
+    transcriptView: "字幕本文",
+    copyPromptView: "コピー用プロンプト",
     settingsButton: "設定",
     fetchTranscript: "選択した字幕を取得",
     fetchTranscriptLoading: "取得中",
@@ -211,6 +213,8 @@ const uiText = {
     selectedLanguage: "Selected language",
     characterCount: "Characters",
     copyPrompt: "Copy prompt",
+    transcriptView: "Transcript",
+    copyPromptView: "Copy prompt",
     settingsButton: "Settings",
     fetchTranscript: "Get selected caption",
     fetchTranscriptLoading: "Getting",
@@ -334,6 +338,10 @@ app.innerHTML = `
           </div>
           <div class="caption-list" id="caption-list"></div>
         </section>
+        <div class="output-tabs" role="tablist" aria-label="Output view">
+          <button class="output-tab is-active" id="transcript-view-tab" type="button" data-output-mode="transcript" role="tab" aria-selected="true" aria-controls="transcript-output" data-i18n="transcriptView">字幕本文</button>
+          <button class="output-tab" id="copy-prompt-view-tab" type="button" data-output-mode="copyPrompt" role="tab" aria-selected="false" aria-controls="transcript-output" data-i18n="copyPromptView">コピー用プロンプト</button>
+        </div>
         <textarea id="transcript-output" spellcheck="false" readonly></textarea>
       </div>
     </section>
@@ -349,12 +357,12 @@ app.innerHTML = `
         </div>
 
         <div class="settings-tabs" role="tablist" aria-label="Settings sections">
-          <button class="settings-tab is-active" id="settings-prompts-tab" type="button" data-settings-section="prompts" data-i18n="promptsTab">プロンプト</button>
-          <button class="settings-tab" id="settings-display-tab" type="button" data-settings-section="display" data-i18n="displayTab">表示</button>
+          <button class="settings-tab is-active" id="settings-prompts-tab" type="button" role="tab" aria-selected="true" aria-controls="settings-prompts-section" data-settings-section="prompts" data-i18n="promptsTab">プロンプト</button>
+          <button class="settings-tab" id="settings-display-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-display-section" data-settings-section="display" data-i18n="displayTab">表示</button>
         </div>
 
         <div class="settings-body">
-          <section class="settings-section" id="settings-prompts-section">
+          <section class="settings-section" id="settings-prompts-section" role="tabpanel" aria-labelledby="settings-prompts-tab">
             <div class="settings-template-list">
               <label class="label" for="settings-template-select" data-i18n="template">テンプレート</label>
               <select id="settings-template-select" size="6"></select>
@@ -386,7 +394,7 @@ app.innerHTML = `
             </div>
           </section>
 
-          <section class="settings-section settings-section-single" id="settings-display-section" hidden>
+          <section class="settings-section settings-section-single" id="settings-display-section" role="tabpanel" aria-labelledby="settings-display-tab" hidden>
             <div class="settings-editor">
               <label class="label" for="settings-ui-language" data-i18n="uiLanguage">UI言語</label>
               <select id="settings-ui-language">
@@ -427,6 +435,7 @@ const settingsDeleteTemplate = document.querySelector<HTMLButtonElement>("#setti
 const settingsResetTemplate = document.querySelector<HTMLButtonElement>("#settings-reset-template")!;
 const settingsSaveTemplate = document.querySelector<HTMLButtonElement>("#settings-save-template")!;
 const settingsTabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".settings-tab"));
+const outputTabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".output-tab"));
 const settingsPromptsSection = document.querySelector<HTMLElement>("#settings-prompts-section")!;
 const settingsDisplaySection = document.querySelector<HTMLElement>("#settings-display-section")!;
 const settingsUiLanguage = document.querySelector<HTMLSelectElement>("#settings-ui-language")!;
@@ -444,6 +453,8 @@ const charCount = document.querySelector<HTMLElement>("#char-count")!;
 let latestCaptionList: CaptionListSuccess | null = null;
 let selectedCaption: CaptionOption | null = null;
 let latestTranscript: TranscriptSuccess | null = null;
+let outputMode: "transcript" | "copyPrompt" = "transcript";
+let elementToRestoreFocus: HTMLElement | null = null;
 
 renderPromptTemplates();
 applyUiLanguage();
@@ -528,6 +539,7 @@ transcriptButton.addEventListener("click", async () => {
     output.value = payload.text;
     charCount.textContent = payload.text.length.toLocaleString("ja-JP");
     copyButton.disabled = payload.text.length === 0;
+    renderOutput();
     try {
       await copyTranscriptToClipboard(payload, getDefaultPromptTemplate());
     } catch {
@@ -556,6 +568,7 @@ copyButton.addEventListener("click", async () => {
 
 promptTemplateSelect.addEventListener("change", () => {
   updatePromptDescription();
+  renderOutput();
 
   if (!latestTranscript) {
     return;
@@ -563,6 +576,15 @@ promptTemplateSelect.addEventListener("change", () => {
 
   message.classList.remove("error");
   message.textContent = t("promptChanged");
+});
+
+outputTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const mode = tab.dataset.outputMode;
+    if (mode === "transcript" || mode === "copyPrompt") {
+      setOutputMode(mode);
+    }
+  });
 });
 
 settingsTabs.forEach((tab) => {
@@ -585,6 +607,22 @@ promptSettingsClose.addEventListener("click", () => {
 promptSettingsModal.addEventListener("click", (event) => {
   if (event.target === promptSettingsModal) {
     closePromptSettings();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (promptSettingsModal.hidden) {
+    return;
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closePromptSettings();
+    return;
+  }
+
+  if (event.key === "Tab") {
+    trapSettingsFocus(event);
   }
 });
 
@@ -670,6 +708,13 @@ settingsSaveDisplay.addEventListener("click", () => {
 });
 
 function renderCaptionOptions(captions: CaptionOption[]) {
+  const selectedIndex = selectedCaption
+    ? captions.findIndex(
+        (caption) =>
+          caption.language === selectedCaption?.language &&
+          caption.source === selectedCaption?.source
+      )
+    : 0;
   captionList.innerHTML = captions
     .map(
       (caption, index) => `
@@ -678,7 +723,7 @@ function renderCaptionOptions(captions: CaptionOption[]) {
             type="radio"
             name="caption-option"
             value="${index}"
-            ${index === 0 ? "checked" : ""}
+            ${index === Math.max(selectedIndex, 0) ? "checked" : ""}
           />
           <span class="caption-option-body">
             <strong>${escapeHtml(caption.name || caption.language)}</strong>
@@ -721,16 +766,16 @@ function clearResult() {
 function clearTranscript() {
   latestTranscript = null;
   charCount.textContent = "0";
-  output.value = "";
   copyButton.disabled = true;
+  renderOutput();
 }
 
 function showError(text: string) {
   latestTranscript = null;
   message.textContent = text;
   message.classList.add("error");
-  output.value = "";
   copyButton.disabled = true;
+  renderOutput();
 }
 
 function formatInvokeError(error: unknown, fallback: string) {
@@ -771,6 +816,28 @@ async function copyTranscriptToClipboard(transcript: TranscriptSuccess, template
 
   message.classList.remove("error");
   message.textContent = t("copiedWithPrompt", template.label);
+}
+
+function setOutputMode(mode: "transcript" | "copyPrompt") {
+  outputMode = mode;
+  outputTabs.forEach((tab) => {
+    const isActive = tab.dataset.outputMode === mode;
+    tab.classList.toggle("is-active", isActive);
+    tab.setAttribute("aria-selected", String(isActive));
+  });
+  renderOutput();
+}
+
+function renderOutput() {
+  if (!latestTranscript) {
+    output.value = "";
+    return;
+  }
+
+  output.value =
+    outputMode === "copyPrompt"
+      ? buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate())
+      : latestTranscript.text;
 }
 
 function copyTextWithSelectionFallback(text: string) {
@@ -881,6 +948,7 @@ function getDefaultPromptTemplate() {
 }
 
 function openPromptSettings() {
+  elementToRestoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   showSettingsSection(activeSettingsSection);
   settingsUiLanguage.value = appSettings.uiLanguage;
   renderPromptSettingsList(promptTemplateSelect.value || promptSettings.defaultTemplateId);
@@ -896,7 +964,8 @@ function openPromptSettings() {
 
 function closePromptSettings() {
   promptSettingsModal.hidden = true;
-  promptSettingsButton.focus();
+  (elementToRestoreFocus ?? promptSettingsButton).focus();
+  elementToRestoreFocus = null;
 }
 
 function renderPromptSettingsList(selectedTemplateId: string) {
@@ -938,11 +1007,39 @@ function applyUiLanguage() {
   });
   updatePromptDescription();
   updateSelectedLanguage();
+  renderOutput();
+  if (latestCaptionList) {
+    renderCaptionOptions(latestCaptionList.captions);
+  }
   if (!latestCaptionList && !latestTranscript) {
     title.textContent = t("transcriptTitle");
   }
   if (!latestCaptionList) {
     captionCount.textContent = t("captionCount", 0);
+  }
+}
+
+function trapSettingsFocus(event: KeyboardEvent) {
+  const focusable = Array.from(
+    promptSettingsModal.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((element) => !element.closest("[hidden]"));
+
+  if (focusable.length === 0) {
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+
+  if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
   }
 }
 

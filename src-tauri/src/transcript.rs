@@ -5,9 +5,14 @@ use std::{
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, ExitStatus, Stdio},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use url::Url;
+
+const YTDLP_TIMEOUT: Duration = Duration::from_secs(45);
+const CAPTION_FETCH_TIMEOUT: Duration = Duration::from_secs(25);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -148,7 +153,10 @@ pub async fn fetch_transcript(
         ));
     }
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(CAPTION_FETCH_TIMEOUT)
+        .build()
+        .map_err(|_| TranscriptError::new("字幕取得クライアントを初期化できませんでした。", 502))?;
 
     for track in tracks {
         let response = client
@@ -269,40 +277,43 @@ fn rank_caption_tracks(info: &YtDlpInfo) -> Vec<CaptionTrack> {
 fn parse_vtt_to_plain_text(vtt: &str) -> String {
     let mut result = Vec::new();
     let mut previous = String::new();
-    let mut skipping_block = false;
+    let normalized = vtt.replace('\r', "");
 
-    for raw_line in vtt.replace('\r', "").lines() {
-        let line = raw_line.trim();
+    for block in normalized.split("\n\n") {
+        let lines = block
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
 
-        if line.is_empty() {
-            skipping_block = false;
+        if lines.is_empty() {
             continue;
         }
 
-        if starts_with_any_case(line, &["WEBVTT", "Kind:", "Language:"]) {
+        if starts_with_any_case(lines[0], &["NOTE", "STYLE", "REGION"]) {
             continue;
         }
 
-        if starts_with_any_case(line, &["NOTE", "STYLE", "REGION"]) {
-            skipping_block = true;
+        let Some(timing_index) = lines.iter().position(|line| line.contains("-->")) else {
             continue;
+        };
+
+        for line in lines.iter().skip(timing_index + 1) {
+            if starts_with_any_case(line, &["WEBVTT", "Kind:", "Language:"]) {
+                continue;
+            }
+
+            let cleaned = collapse_whitespace(&decode_entities(&strip_tags(
+                &strip_inline_timestamps(line),
+            )));
+
+            if cleaned.is_empty() || cleaned == previous {
+                continue;
+            }
+
+            previous = cleaned.clone();
+            result.push(cleaned);
         }
-
-        if skipping_block || line.contains("-->") || line.chars().all(|char| char.is_ascii_digit())
-        {
-            continue;
-        }
-
-        let cleaned = collapse_whitespace(&decode_entities(&strip_tags(&strip_inline_timestamps(
-            line,
-        ))));
-
-        if cleaned.is_empty() || cleaned == previous {
-            continue;
-        }
-
-        previous = cleaned.clone();
-        result.push(cleaned);
     }
 
     strip_transcript_notices(&result)
@@ -319,8 +330,8 @@ async fn get_ytdlp_info(url: &str) -> Result<YtDlpInfo, TranscriptError> {
         )
     })?;
 
-    let output = Command::new(ytdlp)
-        .args([
+    let output = run_ytdlp_with_timeout(
+        Command::new(ytdlp).args([
             "--dump-single-json",
             "--skip-download",
             "--write-auto-subs",
@@ -329,11 +340,13 @@ async fn get_ytdlp_info(url: &str) -> Result<YtDlpInfo, TranscriptError> {
             "all",
             "--sub-format",
             "vtt",
+            "--socket-timeout",
+            "20",
             "--no-warnings",
             url,
-        ])
-        .output()
-        .map_err(|_| TranscriptError::new("yt-dlpを実行できませんでした。", 502))?;
+        ]),
+        YTDLP_TIMEOUT,
+    )?;
 
     if !output.status.success() {
         return Err(TranscriptError::new(
@@ -411,10 +424,7 @@ fn collect_tracks(
             .into_iter()
             .filter(|format| is_selectable_caption_format(language, format))
             .collect::<Vec<_>>();
-        let selected = selectable
-            .iter()
-            .find(|format| format.ext.as_deref() == Some("vtt"))
-            .or_else(|| selectable.first());
+        let selected = selectable.first();
 
         if let Some(selected) = selected {
             if let Some(url) = selected.url.clone() {
@@ -499,8 +509,84 @@ fn is_translated_caption(language: &str) -> bool {
 
 fn is_selectable_caption_format(language: &str, caption: &YtDlpCaption) -> bool {
     caption.url.is_some()
+        && caption.ext.as_deref() == Some("vtt")
         && !is_translated_caption(language)
         && !has_translation_target(caption.url.as_deref())
+}
+
+struct CommandOutput {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+fn run_ytdlp_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+) -> Result<CommandOutput, TranscriptError> {
+    let output_base = temp_output_base();
+    let stdout_path = output_base.with_extension("stdout");
+    let stderr_path = output_base.with_extension("stderr");
+    let stdout_file = fs::File::create(&stdout_path)
+        .map_err(|_| TranscriptError::new("yt-dlpの一時出力を作成できませんでした。", 502))?;
+    let stderr_file = fs::File::create(&stderr_path)
+        .map_err(|_| TranscriptError::new("yt-dlpの一時出力を作成できませんでした。", 502))?;
+
+    let mut child = command
+        .stdout(Stdio::from(stdout_file))
+        .stderr(Stdio::from(stderr_file))
+        .spawn()
+        .map_err(|_| TranscriptError::new("yt-dlpを実行できませんでした。", 502))?;
+    let started_at = std::time::Instant::now();
+
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started_at.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                cleanup_temp_output(&stdout_path, &stderr_path);
+                return Err(TranscriptError::new(
+                    "字幕情報の取得がタイムアウトしました。しばらくしてから再試行してください。",
+                    504,
+                ));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(100)),
+            Err(_) => {
+                cleanup_temp_output(&stdout_path, &stderr_path);
+                return Err(TranscriptError::new(
+                    "yt-dlpの終了状態を確認できませんでした。",
+                    502,
+                ));
+            }
+        }
+    };
+
+    let stdout = fs::read(&stdout_path).unwrap_or_default();
+    let stderr = fs::read(&stderr_path).unwrap_or_default();
+    cleanup_temp_output(&stdout_path, &stderr_path);
+
+    Ok(CommandOutput {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+fn temp_output_base() -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    env::temp_dir().join(format!(
+        "youtube-ai-brief-ytdlp-{}-{unique}",
+        std::process::id()
+    ))
+}
+
+fn cleanup_temp_output(stdout_path: &Path, stderr_path: &Path) {
+    let _ = fs::remove_file(stdout_path);
+    let _ = fs::remove_file(stderr_path);
 }
 
 fn has_translation_target(url: Option<&str>) -> bool {
@@ -817,6 +903,28 @@ mod tests {
     }
 
     #[test]
+    fn parses_vtt_with_cue_ids_and_ignores_note_blocks() {
+        let text = parse_vtt_to_plain_text(
+            r#"WEBVTT
+Kind: captions
+
+NOTE
+This should not be included.
+
+intro-cue
+00:00:00.000 --> 00:00:01.000 align:start
+Hello <00:00:00.500>world
+
+next-cue
+00:00:01.000 --> 00:00:02.000
+<c.highlight>Second line</c>
+"#,
+        );
+
+        assert_eq!(text, "Hello world\nSecond line");
+    }
+
+    #[test]
     fn strips_transcript_notice() {
         let text = parse_vtt_to_plain_text(
             r#"WEBVTT
@@ -830,6 +938,29 @@ Hello everyone
         );
 
         assert_eq!(text, "Hello everyone");
+    }
+
+    #[test]
+    fn excludes_non_vtt_caption_formats() {
+        let tracks = rank_caption_tracks(&info(serde_json::json!({
+            "subtitles": {
+                "ja": [
+                    { "ext": "json3", "url": "https://example.com/ja.json3" },
+                    { "ext": "vtt", "url": "https://example.com/ja.vtt" }
+                ],
+                "en": [
+                    { "ext": "srv3", "url": "https://example.com/en.srv3" }
+                ]
+            }
+        })));
+
+        assert_eq!(
+            tracks
+                .iter()
+                .map(|track| track.language.as_str())
+                .collect::<Vec<_>>(),
+            ["ja"]
+        );
     }
 
     #[test]

@@ -307,6 +307,27 @@ input[type="radio"]:focus {
   overflow-wrap: anywhere;
 }
 
+.output-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #e2e7ec;
+  padding: 12px 18px;
+}
+
+.output-tab {
+  border: 1px solid #cbd3da;
+  background: #ffffff;
+  color: #243447;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.output-tab.is-active {
+  border-color: #2f80ed;
+  background: #f1f7ff;
+  color: #174a87;
+}
+
 textarea {
   display: block;
   width: 100%;
@@ -476,7 +497,8 @@ textarea {
   }
 
   .settings-actions,
-  .settings-footer {
+  .settings-footer,
+  .output-tabs {
     display: grid;
   }
 }
