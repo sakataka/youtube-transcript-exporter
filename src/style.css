@@ -55,6 +55,21 @@ button:disabled {
   cursor: not-allowed;
 }
 
+button.secondary-button {
+  border: 1px solid #cbd3da;
+  background: #ffffff;
+  color: #243447;
+}
+
+button.secondary-button:hover:not(:disabled) {
+  background: #f3f6f8;
+}
+
+button.compact-button {
+  min-height: 38px;
+  padding: 0 12px;
+}
+
 .workspace {
   width: min(1120px, calc(100vw - 32px));
   margin: 0 auto;
@@ -189,6 +204,11 @@ input[type="radio"]:focus {
   font-size: 0.86rem;
 }
 
+#prompt-settings-button {
+  margin-top: 10px;
+  width: 100%;
+}
+
 .output-panel {
   min-height: 620px;
   overflow: hidden;
@@ -299,6 +319,98 @@ textarea {
   line-height: 1.7;
 }
 
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  padding: 24px;
+  background: rgba(17, 24, 39, 0.36);
+  z-index: 10;
+}
+
+.settings-backdrop[hidden] {
+  display: none;
+}
+
+.settings-panel {
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid #dce2e7;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(27, 39, 51, 0.24);
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+  border-bottom: 1px solid #e2e7ec;
+  padding: 18px;
+}
+
+.settings-header h2 {
+  margin-bottom: 0;
+  font-size: 1.25rem;
+}
+
+.settings-body {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px;
+}
+
+.settings-template-list,
+.settings-editor {
+  min-width: 0;
+}
+
+#settings-template-select {
+  height: 196px;
+  padding: 8px;
+}
+
+.settings-actions,
+.settings-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settings-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-template-body {
+  min-height: 260px;
+  height: 260px;
+  border: 1px solid #cbd3da;
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+
+.default-template-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  color: #243447;
+  font-weight: 700;
+}
+
+.default-template-toggle input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+}
+
 @media (max-width: 760px) {
   .workspace {
     width: min(100vw - 20px, 640px);
@@ -326,5 +438,14 @@ textarea {
 
   textarea {
     height: 360px;
+  }
+
+  .settings-body {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-actions,
+  .settings-footer {
+    display: grid;
   }
 }

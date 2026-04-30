@@ -14,6 +14,7 @@ type CaptionListSuccess = {
   videoId: string;
   title: string;
   channelName?: string;
+  publishedDate?: string;
   captions: CaptionOption[];
 };
 
@@ -23,6 +24,7 @@ type TranscriptSuccess = {
   source: CaptionSource;
   title: string;
   channelName?: string;
+  publishedDate?: string;
   text: string;
 };
 
@@ -30,16 +32,21 @@ type ApiFailure = {
   error: string;
 };
 
-type PromptTemplateId = "default" | "quick" | "detailed" | "argument" | "study";
-
 type PromptTemplate = {
-  id: PromptTemplateId;
+  id: string;
   label: string;
   description: string;
   instruction: string;
 };
 
-const promptTemplates: PromptTemplate[] = [
+type PromptSettings = {
+  defaultTemplateId: string;
+  templates: PromptTemplate[];
+};
+
+const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1";
+const defaultPromptTemplateId = "default";
+const defaultPromptTemplates: PromptTemplate[] = [
   {
     id: "default",
     label: "概要 + 詳細",
@@ -51,9 +58,7 @@ const promptTemplates: PromptTemplate[] = [
       "1. この動画の概要",
       "2. 重要なポイント",
       "3. 話の流れの詳細",
-      "4. 結論・主張",
-      "5. 背景知識や専門用語の補足",
-      "6. この動画を見るべき人"
+      "4. 結論・主張"
     ].join("\n")
   },
   {
@@ -117,6 +122,8 @@ const promptTemplates: PromptTemplate[] = [
   }
 ];
 
+let promptSettings = loadPromptSettings();
+
 const app = document.querySelector<HTMLDivElement>("#app");
 
 if (!app) {
@@ -168,6 +175,7 @@ app.innerHTML = `
           <label class="label" for="prompt-template">コピープロンプト</label>
           <select id="prompt-template"></select>
           <p class="prompt-description" id="prompt-description"></p>
+          <button class="secondary-button" id="prompt-settings-button" type="button">プロンプト設定</button>
         </div>
         <div class="action-buttons">
           <button id="transcript-button" type="button" disabled>選択した字幕を取得</button>
@@ -190,6 +198,50 @@ app.innerHTML = `
         <textarea id="transcript-output" spellcheck="false" readonly></textarea>
       </div>
     </section>
+
+    <div class="settings-backdrop" id="prompt-settings-modal" hidden>
+      <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="prompt-settings-title">
+        <div class="settings-header">
+          <div>
+            <p class="eyebrow">Copy prompt</p>
+            <h2 id="prompt-settings-title">プロンプト設定</h2>
+          </div>
+          <button class="secondary-button compact-button" id="prompt-settings-close" type="button">閉じる</button>
+        </div>
+
+        <div class="settings-body">
+          <div class="settings-template-list">
+            <label class="label" for="settings-template-select">テンプレート</label>
+            <select id="settings-template-select" size="6"></select>
+            <div class="settings-actions">
+              <button class="secondary-button" id="settings-add-template" type="button">追加</button>
+              <button class="secondary-button" id="settings-delete-template" type="button">削除</button>
+            </div>
+          </div>
+
+          <div class="settings-editor">
+            <label class="label" for="settings-template-title">タイトル</label>
+            <input id="settings-template-title" type="text" />
+
+            <label class="label" for="settings-template-description">説明</label>
+            <input id="settings-template-description" type="text" />
+
+            <label class="label" for="settings-template-body">本文</label>
+            <textarea id="settings-template-body" class="settings-template-body" spellcheck="false"></textarea>
+
+            <label class="default-template-toggle">
+              <input id="settings-template-default" type="checkbox" />
+              <span>このテンプレートを自動コピーのデフォルトにする</span>
+            </label>
+
+            <div class="settings-footer">
+              <button class="secondary-button" id="settings-reset-template" type="button">初期状態に戻す</button>
+              <button id="settings-save-template" type="button">保存</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   </section>
 `;
 
@@ -200,6 +252,20 @@ const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-
 const copyButton = document.querySelector<HTMLButtonElement>("#copy-button")!;
 const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
 const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
+const promptSettingsButton = document.querySelector<HTMLButtonElement>("#prompt-settings-button")!;
+const promptSettingsModal = document.querySelector<HTMLDivElement>("#prompt-settings-modal")!;
+const promptSettingsClose = document.querySelector<HTMLButtonElement>("#prompt-settings-close")!;
+const settingsTemplateSelect = document.querySelector<HTMLSelectElement>("#settings-template-select")!;
+const settingsTemplateTitle = document.querySelector<HTMLInputElement>("#settings-template-title")!;
+const settingsTemplateDescription = document.querySelector<HTMLInputElement>(
+  "#settings-template-description"
+)!;
+const settingsTemplateBody = document.querySelector<HTMLTextAreaElement>("#settings-template-body")!;
+const settingsTemplateDefault = document.querySelector<HTMLInputElement>("#settings-template-default")!;
+const settingsAddTemplate = document.querySelector<HTMLButtonElement>("#settings-add-template")!;
+const settingsDeleteTemplate = document.querySelector<HTMLButtonElement>("#settings-delete-template")!;
+const settingsResetTemplate = document.querySelector<HTMLButtonElement>("#settings-reset-template")!;
+const settingsSaveTemplate = document.querySelector<HTMLButtonElement>("#settings-save-template")!;
 const captionPanel = document.querySelector<HTMLElement>("#caption-panel")!;
 const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
 const captionCount = document.querySelector<HTMLElement>("#caption-count")!;
@@ -297,7 +363,7 @@ transcriptButton.addEventListener("click", async () => {
     charCount.textContent = payload.text.length.toLocaleString("ja-JP");
     copyButton.disabled = payload.text.length === 0;
     try {
-      await copyTranscriptToClipboard(payload);
+      await copyTranscriptToClipboard(payload, getDefaultPromptTemplate());
     } catch {
       message.textContent =
         "取得しましたが、クリップボードにコピーできませんでした。コピーボタンを押すか、本文を選択して手動でコピーしてください。";
@@ -316,7 +382,7 @@ copyButton.addEventListener("click", async () => {
   }
 
   try {
-    await copyTranscriptToClipboard(latestTranscript);
+    await copyTranscriptToClipboard(latestTranscript, getSelectedPromptTemplate());
   } catch {
     message.textContent = "クリップボードにコピーできませんでした。本文を選択して手動でコピーしてください。";
     message.classList.add("error");
@@ -332,6 +398,92 @@ promptTemplateSelect.addEventListener("change", () => {
 
   message.classList.remove("error");
   message.textContent = "プロンプトを変更しました。コピーするとこの形式でクリップボードに入ります。";
+});
+
+promptSettingsButton.addEventListener("click", () => {
+  openPromptSettings();
+});
+
+promptSettingsClose.addEventListener("click", () => {
+  closePromptSettings();
+});
+
+promptSettingsModal.addEventListener("click", (event) => {
+  if (event.target === promptSettingsModal) {
+    closePromptSettings();
+  }
+});
+
+settingsTemplateSelect.addEventListener("change", () => {
+  renderPromptSettingsEditor(settingsTemplateSelect.value);
+});
+
+settingsAddTemplate.addEventListener("click", () => {
+  const template: PromptTemplate = {
+    id: `custom-${Date.now()}`,
+    label: "新しいプロンプト",
+    description: "説明を入力してください",
+    instruction: "以下はYouTube動画の字幕です。内容を日本語で整理してください。"
+  };
+
+  promptSettings.templates.push(template);
+  savePromptSettings();
+  renderPromptTemplates(template.id);
+  renderPromptSettingsList(template.id);
+  renderPromptSettingsEditor(template.id);
+});
+
+settingsDeleteTemplate.addEventListener("click", () => {
+  if (promptSettings.templates.length <= 1) {
+    return;
+  }
+
+  const templateId = settingsTemplateSelect.value;
+  promptSettings.templates = promptSettings.templates.filter((template) => template.id !== templateId);
+
+  if (promptSettings.defaultTemplateId === templateId) {
+    promptSettings.defaultTemplateId = promptSettings.templates[0]?.id ?? defaultPromptTemplateId;
+  }
+
+  const nextTemplateId = promptSettings.templates[0]?.id ?? defaultPromptTemplateId;
+  savePromptSettings();
+  renderPromptTemplates(nextTemplateId);
+  renderPromptSettingsList(nextTemplateId);
+  renderPromptSettingsEditor(nextTemplateId);
+});
+
+settingsResetTemplate.addEventListener("click", () => {
+  promptSettings = createDefaultPromptSettings();
+  savePromptSettings();
+  renderPromptTemplates(promptSettings.defaultTemplateId);
+  renderPromptSettingsList(promptSettings.defaultTemplateId);
+  renderPromptSettingsEditor(promptSettings.defaultTemplateId);
+  message.classList.remove("error");
+  message.textContent = "プロンプト設定を初期状態に戻しました。";
+});
+
+settingsSaveTemplate.addEventListener("click", () => {
+  const templateId = settingsTemplateSelect.value;
+  const template = promptSettings.templates.find((item) => item.id === templateId);
+
+  if (!template) {
+    return;
+  }
+
+  template.label = settingsTemplateTitle.value.trim() || "無題のプロンプト";
+  template.description = settingsTemplateDescription.value.trim();
+  template.instruction = settingsTemplateBody.value.trim() || "以下はYouTube動画の字幕です。内容を日本語で整理してください。";
+
+  if (settingsTemplateDefault.checked) {
+    promptSettings.defaultTemplateId = template.id;
+  }
+
+  savePromptSettings();
+  renderPromptTemplates(template.id);
+  renderPromptSettingsList(template.id);
+  renderPromptSettingsEditor(template.id);
+  message.classList.remove("error");
+  message.textContent = "プロンプト設定を保存しました。";
 });
 
 function renderCaptionOptions(captions: CaptionOption[]) {
@@ -425,8 +577,8 @@ function formatCaptionLabel(caption: CaptionOption) {
   return `${caption.language} (${caption.source === "manual" ? "字幕" : "自動字幕"})`;
 }
 
-async function copyTranscriptToClipboard(transcript: TranscriptSuccess) {
-  const clipboardText = buildAnalysisPrompt(transcript);
+async function copyTranscriptToClipboard(transcript: TranscriptSuccess, template: PromptTemplate) {
+  const clipboardText = buildAnalysisPrompt(transcript, template);
 
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(clipboardText);
@@ -435,7 +587,7 @@ async function copyTranscriptToClipboard(transcript: TranscriptSuccess) {
   }
 
   message.classList.remove("error");
-  message.textContent = `取得しました。「${getSelectedPromptTemplate().label}」プロンプト付きでクリップボードにコピーしました。`;
+  message.textContent = `取得しました。「${template.label}」プロンプト付きでクリップボードにコピーしました。`;
 }
 
 function copyTextWithSelectionFallback(text: string) {
@@ -452,7 +604,7 @@ function copyTextWithSelectionFallback(text: string) {
   clipboardBuffer.remove();
 }
 
-function buildAnalysisPrompt(transcript: TranscriptSuccess) {
+function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemplate) {
   const captionLabel = selectedCaption
     ? formatCaptionLabel({
         language: transcript.language,
@@ -464,6 +616,7 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess) {
   const metadata = [
     `動画タイトル: ${transcript.title || transcript.videoId}`,
     transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
+    transcript.publishedDate ? `公開日: ${transcript.publishedDate}` : null,
     `YouTube URL: ${urlInput.value.trim()}`,
     `動画ID: ${transcript.videoId}`,
     `字幕: ${captionLabel}`,
@@ -478,7 +631,7 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess) {
       : [];
 
   return [
-    getSelectedPromptTemplate().instruction,
+    template.instruction,
     "",
     "動画情報:",
     ...metadata,
@@ -489,11 +642,16 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess) {
   ].join("\n");
 }
 
-function renderPromptTemplates() {
-  promptTemplateSelect.innerHTML = promptTemplates
+function renderPromptTemplates(selectedTemplateId = promptSettings.defaultTemplateId) {
+  promptTemplateSelect.innerHTML = promptSettings.templates
     .map((template) => `<option value="${template.id}">${escapeHtml(template.label)}</option>`)
     .join("");
-  promptTemplateSelect.value = "default";
+
+  promptTemplateSelect.value = promptSettings.templates.some(
+    (template) => template.id === selectedTemplateId
+  )
+    ? selectedTemplateId
+    : promptSettings.defaultTemplateId;
   updatePromptDescription();
 }
 
@@ -503,9 +661,129 @@ function updatePromptDescription() {
 
 function getSelectedPromptTemplate() {
   return (
-    promptTemplates.find((template) => template.id === promptTemplateSelect.value) ??
-    promptTemplates[0]
+    promptSettings.templates.find((template) => template.id === promptTemplateSelect.value) ??
+    promptSettings.templates.find((template) => template.id === promptSettings.defaultTemplateId) ??
+    promptSettings.templates[0]
   );
+}
+
+function getDefaultPromptTemplate() {
+  return (
+    promptSettings.templates.find((template) => template.id === promptSettings.defaultTemplateId) ??
+    promptSettings.templates[0]
+  );
+}
+
+function openPromptSettings() {
+  renderPromptSettingsList(promptTemplateSelect.value || promptSettings.defaultTemplateId);
+  renderPromptSettingsEditor(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
+  promptSettingsModal.hidden = false;
+  settingsTemplateTitle.focus();
+  settingsTemplateTitle.select();
+}
+
+function closePromptSettings() {
+  promptSettingsModal.hidden = true;
+  promptSettingsButton.focus();
+}
+
+function renderPromptSettingsList(selectedTemplateId: string) {
+  settingsTemplateSelect.innerHTML = promptSettings.templates
+    .map((template) => {
+      const defaultMark = template.id === promptSettings.defaultTemplateId ? " / デフォルト" : "";
+      return `<option value="${template.id}">${escapeHtml(template.label)}${defaultMark}</option>`;
+    })
+    .join("");
+  settingsTemplateSelect.value = promptSettings.templates.some(
+    (template) => template.id === selectedTemplateId
+  )
+    ? selectedTemplateId
+    : promptSettings.defaultTemplateId;
+  settingsDeleteTemplate.disabled = promptSettings.templates.length <= 1;
+}
+
+function renderPromptSettingsEditor(templateId: string) {
+  const template = promptSettings.templates.find((item) => item.id === templateId) ?? promptSettings.templates[0];
+
+  if (!template) {
+    return;
+  }
+
+  settingsTemplateSelect.value = template.id;
+  settingsTemplateTitle.value = template.label;
+  settingsTemplateDescription.value = template.description;
+  settingsTemplateBody.value = template.instruction;
+  settingsTemplateDefault.checked = template.id === promptSettings.defaultTemplateId;
+}
+
+function loadPromptSettings(): PromptSettings {
+  const fallback = createDefaultPromptSettings();
+
+  try {
+    const rawValue = localStorage.getItem(promptSettingsStorageKey);
+    if (!rawValue) {
+      return fallback;
+    }
+
+    const parsed = JSON.parse(rawValue) as Partial<PromptSettings>;
+    const templates = Array.isArray(parsed.templates)
+      ? parsed.templates
+          .map(normalizePromptTemplate)
+          .filter((template): template is PromptTemplate => Boolean(template))
+      : [];
+
+    if (templates.length === 0) {
+      return fallback;
+    }
+
+    const defaultTemplateId =
+      typeof parsed.defaultTemplateId === "string" &&
+      templates.some((template) => template.id === parsed.defaultTemplateId)
+        ? parsed.defaultTemplateId
+        : templates[0].id;
+
+    return {
+      defaultTemplateId,
+      templates
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function savePromptSettings() {
+  localStorage.setItem(promptSettingsStorageKey, JSON.stringify(promptSettings));
+}
+
+function createDefaultPromptSettings(): PromptSettings {
+  return {
+    defaultTemplateId: defaultPromptTemplateId,
+    templates: defaultPromptTemplates.map((template) => ({ ...template }))
+  };
+}
+
+function normalizePromptTemplate(value: unknown): PromptTemplate | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Partial<PromptTemplate>;
+
+  if (
+    typeof candidate.id !== "string" ||
+    typeof candidate.label !== "string" ||
+    typeof candidate.description !== "string" ||
+    typeof candidate.instruction !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: candidate.id,
+    label: candidate.label,
+    description: candidate.description,
+    instruction: candidate.instruction
+  };
 }
 
 function focusUrlInput() {

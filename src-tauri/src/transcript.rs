@@ -36,6 +36,8 @@ struct YtDlpInfo {
     id: Option<String>,
     title: Option<String>,
     channel: Option<String>,
+    upload_date: Option<String>,
+    release_date: Option<String>,
     subtitles: Option<serde_json::Map<String, serde_json::Value>>,
     automatic_captions: Option<serde_json::Map<String, serde_json::Value>>,
 }
@@ -46,6 +48,7 @@ pub struct TranscriptResult {
     pub video_id: String,
     pub title: String,
     pub channel_name: Option<String>,
+    pub published_date: Option<String>,
     pub language: String,
     pub source: CaptionSource,
     pub text: String,
@@ -66,6 +69,7 @@ pub struct CaptionListResult {
     pub video_id: String,
     pub title: String,
     pub channel_name: Option<String>,
+    pub published_date: Option<String>,
     pub captions: Vec<CaptionOption>,
 }
 
@@ -104,6 +108,9 @@ pub async fn list_captions(url: &str) -> Result<CaptionListResult, TranscriptErr
             .clone()
             .unwrap_or_else(|| info.id.clone().unwrap_or_default()),
         channel_name: info.channel.clone(),
+        published_date: format_youtube_date(
+            info.release_date.as_ref().or(info.upload_date.as_ref()),
+        ),
         captions: tracks
             .into_iter()
             .map(|track| CaptionOption {
@@ -170,6 +177,9 @@ pub async fn fetch_transcript(
                 .clone()
                 .unwrap_or_else(|| info.id.clone().unwrap_or_default()),
             channel_name: info.channel.clone(),
+            published_date: format_youtube_date(
+                info.release_date.as_ref().or(info.upload_date.as_ref()),
+            ),
             language: track.language,
             source: track.source,
             text,
@@ -338,6 +348,25 @@ fn get_selectable_tracks(info: &YtDlpInfo) -> Vec<CaptionTrack> {
         CaptionSource::Automatic,
     ));
     dedupe_caption_tracks(tracks)
+}
+
+fn format_youtube_date(value: Option<&String>) -> Option<String> {
+    let value = value?.trim();
+
+    if value.len() == 8 && value.chars().all(|char| char.is_ascii_digit()) {
+        return Some(format!(
+            "{}-{}-{}",
+            &value[0..4],
+            &value[4..6],
+            &value[6..8]
+        ));
+    }
+
+    if value.is_empty() {
+        return None;
+    }
+
+    Some(value.to_string())
 }
 
 fn collect_tracks(
