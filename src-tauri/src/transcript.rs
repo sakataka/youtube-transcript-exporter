@@ -851,15 +851,28 @@ fn find_ytdlp_path_with(
 
 fn is_executable_file(path: &Path) -> bool {
     fs::metadata(path)
-        .map(|metadata| metadata.is_file())
+        .map(|metadata| metadata.is_file() && has_execute_permission(&metadata))
         .unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn has_execute_permission(metadata: &fs::Metadata) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    metadata.permissions().mode() & 0o111 != 0
+}
+
+#[cfg(not(unix))]
+fn has_execute_permission(_: &fs::Metadata) -> bool {
+    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::{
-        fs::File,
+        fs::{File, Permissions},
+        os::unix::fs::PermissionsExt,
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -1086,6 +1099,7 @@ Hello everyone
         fs::create_dir_all(&dir).unwrap();
         let candidate = dir.join("yt-dlp");
         File::create(&candidate).unwrap();
+        fs::set_permissions(&candidate, Permissions::from_mode(0o755)).unwrap();
 
         let found = find_ytdlp_path_with(None, [candidate.clone()]);
 
@@ -1093,5 +1107,38 @@ Hello everyone
         fs::remove_dir(&dir).unwrap();
 
         assert_eq!(found, Some(candidate));
+    }
+
+    #[test]
+    fn skips_non_executable_ytdlp_path_entries() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base_dir = env::temp_dir().join(format!("yt-dlp-path-test-{unique}"));
+        let path_dir = base_dir.join("path");
+        let candidate_dir = base_dir.join("candidate");
+        fs::create_dir_all(&path_dir).unwrap();
+        fs::create_dir_all(&candidate_dir).unwrap();
+
+        let non_executable = path_dir.join("yt-dlp");
+        let executable = candidate_dir.join("yt-dlp");
+        File::create(&non_executable).unwrap();
+        File::create(&executable).unwrap();
+        fs::set_permissions(&non_executable, Permissions::from_mode(0o644)).unwrap();
+        fs::set_permissions(&executable, Permissions::from_mode(0o755)).unwrap();
+
+        let found = find_ytdlp_path_with(
+            env::join_paths([path_dir.clone()]).ok(),
+            [executable.clone()],
+        );
+
+        fs::remove_file(&non_executable).unwrap();
+        fs::remove_file(&executable).unwrap();
+        fs::remove_dir(&path_dir).unwrap();
+        fs::remove_dir(&candidate_dir).unwrap();
+        fs::remove_dir(&base_dir).unwrap();
+
+        assert_eq!(found, Some(executable));
     }
 }
