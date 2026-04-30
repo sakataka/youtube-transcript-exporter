@@ -489,10 +489,7 @@ form.addEventListener("submit", async (event) => {
     videoId.textContent = payload.videoId;
     renderCaptionOptions(payload.captions);
     transcriptButton.disabled = !selectedCaption;
-    message.classList.remove("error");
-    message.textContent = selectedCaption
-      ? t("chooseCaption")
-      : t("noCaptions");
+    showMessage(selectedCaption ? t("chooseCaption") : t("noCaptions"));
     updateSelectedLanguage();
   } catch (error) {
     showError(formatInvokeError(error, t("listCaptionsFailed")));
@@ -512,8 +509,7 @@ captionList.addEventListener("change", (event) => {
   transcriptButton.disabled = !selectedCaption;
   clearTranscript();
   updateSelectedLanguage();
-  message.classList.remove("error");
-  message.textContent = t("captionReady");
+  showMessage(t("captionReady"));
 });
 
 transcriptButton.addEventListener("click", async () => {
@@ -550,8 +546,7 @@ transcriptButton.addEventListener("click", async () => {
     try {
       await copyTranscriptToClipboard(payload, getDefaultPromptTemplate());
     } catch {
-      message.textContent = t("transcriptCopyFailed");
-      message.classList.add("error");
+      showMessage(t("transcriptCopyFailed"), true);
     }
   } catch (error) {
     showError(formatInvokeError(error, t("fetchTranscriptFailed")));
@@ -568,8 +563,7 @@ copyButton.addEventListener("click", async () => {
   try {
     await copyTranscriptToClipboard(latestTranscript, getSelectedPromptTemplate());
   } catch {
-    message.textContent = t("copyFailed");
-    message.classList.add("error");
+    showMessage(t("copyFailed"), true);
   }
 });
 
@@ -581,8 +575,7 @@ promptTemplateSelect.addEventListener("change", () => {
     return;
   }
 
-  message.classList.remove("error");
-  message.textContent = t("promptChanged");
+  showMessage(t("promptChanged"));
 });
 
 outputTabs.forEach((tab) => {
@@ -647,9 +640,7 @@ settingsAddTemplate.addEventListener("click", () => {
 
   promptSettings.templates.push(template);
   savePromptSettings();
-  renderPromptTemplates(template.id);
-  renderPromptSettingsList(template.id);
-  renderPromptSettingsEditor(template.id);
+  renderPromptSettings(template.id);
 });
 
 settingsDeleteTemplate.addEventListener("click", () => {
@@ -666,19 +657,14 @@ settingsDeleteTemplate.addEventListener("click", () => {
 
   const nextTemplateId = promptSettings.templates[0]?.id ?? defaultPromptTemplateId;
   savePromptSettings();
-  renderPromptTemplates(nextTemplateId);
-  renderPromptSettingsList(nextTemplateId);
-  renderPromptSettingsEditor(nextTemplateId);
+  renderPromptSettings(nextTemplateId);
 });
 
 settingsResetTemplate.addEventListener("click", () => {
   promptSettings = createDefaultPromptSettings();
   savePromptSettings();
-  renderPromptTemplates(promptSettings.defaultTemplateId);
-  renderPromptSettingsList(promptSettings.defaultTemplateId);
-  renderPromptSettingsEditor(promptSettings.defaultTemplateId);
-  message.classList.remove("error");
-  message.textContent = t("settingsReset");
+  renderPromptSettings(promptSettings.defaultTemplateId);
+  showMessage(t("settingsReset"));
 });
 
 settingsSaveTemplate.addEventListener("click", () => {
@@ -698,11 +684,8 @@ settingsSaveTemplate.addEventListener("click", () => {
   }
 
   savePromptSettings();
-  renderPromptTemplates(template.id);
-  renderPromptSettingsList(template.id);
-  renderPromptSettingsEditor(template.id);
-  message.classList.remove("error");
-  message.textContent = t("settingsSaved");
+  renderPromptSettings(template.id);
+  showMessage(t("settingsSaved"));
 });
 
 settingsSaveDisplay.addEventListener("click", () => {
@@ -710,8 +693,7 @@ settingsSaveDisplay.addEventListener("click", () => {
   saveAppSettings();
   applyUiLanguage();
   renderPromptSettingsList(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
-  message.classList.remove("error");
-  message.textContent = t("languageSaved");
+  showMessage(t("languageSaved"));
 });
 
 function renderCaptionOptions(captions: CaptionOption[]) {
@@ -779,10 +761,14 @@ function clearTranscript() {
 
 function showError(text: string) {
   latestTranscript = null;
-  message.textContent = text;
-  message.classList.add("error");
+  showMessage(text, true);
   copyButton.disabled = true;
   renderOutput();
+}
+
+function showMessage(text: string, isError = false) {
+  message.textContent = text;
+  message.classList.toggle("error", isError);
 }
 
 function formatInvokeError(error: unknown, fallback: string) {
@@ -809,7 +795,11 @@ function updateSelectedLanguage() {
 }
 
 function formatCaptionLabel(caption: CaptionOption) {
-  return `${caption.language} (${caption.source === "manual" ? t("manualCaption") : t("automaticCaption")})`;
+  return `${caption.language} (${formatCaptionSource(caption.source)})`;
+}
+
+function formatCaptionSource(source: CaptionSource) {
+  return source === "manual" ? t("manualCaption") : t("automaticCaption");
 }
 
 async function copyTranscriptToClipboard(transcript: TranscriptSuccess, template: PromptTemplate) {
@@ -821,8 +811,7 @@ async function copyTranscriptToClipboard(transcript: TranscriptSuccess, template
     copyTextWithSelectionFallback(clipboardText);
   }
 
-  message.classList.remove("error");
-  message.textContent = t("copiedWithPrompt", template.label);
+  showMessage(t("copiedWithPrompt", template.label));
 }
 
 function setOutputMode(mode: "transcript" | "copyPrompt") {
@@ -869,7 +858,7 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
         source: transcript.source,
         isAutoCaption: transcript.source === "automatic"
       })
-    : `${transcript.language} (${transcript.source === "manual" ? t("manualCaption") : t("automaticCaption")})`;
+    : `${transcript.language} (${formatCaptionSource(transcript.source)})`;
   const metadata = [
     `動画タイトル: ${transcript.title || transcript.videoId}`,
     transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
@@ -997,12 +986,14 @@ function renderPromptTemplates(selectedTemplateId = promptSettings.defaultTempla
     .map((template) => `<option value="${template.id}">${escapeHtml(template.label)}</option>`)
     .join("");
 
-  promptTemplateSelect.value = promptSettings.templates.some(
-    (template) => template.id === selectedTemplateId
-  )
-    ? selectedTemplateId
-    : promptSettings.defaultTemplateId;
+  promptTemplateSelect.value = resolvePromptTemplateId(selectedTemplateId);
   updatePromptDescription();
+}
+
+function renderPromptSettings(selectedTemplateId: string) {
+  renderPromptTemplates(selectedTemplateId);
+  renderPromptSettingsList(selectedTemplateId);
+  renderPromptSettingsEditor(selectedTemplateId);
 }
 
 function updatePromptDescription() {
@@ -1052,12 +1043,14 @@ function renderPromptSettingsList(selectedTemplateId: string) {
       return `<option value="${template.id}">${escapeHtml(template.label)}${defaultMark}</option>`;
     })
     .join("");
-  settingsTemplateSelect.value = promptSettings.templates.some(
-    (template) => template.id === selectedTemplateId
-  )
-    ? selectedTemplateId
-    : promptSettings.defaultTemplateId;
+  settingsTemplateSelect.value = resolvePromptTemplateId(selectedTemplateId);
   settingsDeleteTemplate.disabled = promptSettings.templates.length <= 1;
+}
+
+function resolvePromptTemplateId(templateId: string) {
+  return promptSettings.templates.some((template) => template.id === templateId)
+    ? templateId
+    : promptSettings.defaultTemplateId;
 }
 
 function showSettingsSection(section: "prompts" | "display") {

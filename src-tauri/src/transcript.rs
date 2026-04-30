@@ -48,6 +48,14 @@ struct YtDlpInfo {
     automatic_captions: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
+struct VideoMetadata {
+    video_id: String,
+    title: String,
+    channel_name: Option<String>,
+    published_date: Option<String>,
+    duration: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptResult {
@@ -118,17 +126,14 @@ pub async fn list_captions(url: &str) -> Result<CaptionListResult, TranscriptErr
         return Err(TranscriptError::bad_request("字幕が見つかりません。"));
     }
 
+    let metadata = build_video_metadata(&info, video_id);
+
     Ok(CaptionListResult {
-        video_id: info.id.clone().unwrap_or(video_id),
-        title: info
-            .title
-            .clone()
-            .unwrap_or_else(|| info.id.clone().unwrap_or_default()),
-        channel_name: info.channel.clone(),
-        published_date: format_youtube_date(
-            info.release_date.as_ref().or(info.upload_date.as_ref()),
-        ),
-        duration: format_duration(info.duration),
+        video_id: metadata.video_id,
+        title: metadata.title,
+        channel_name: metadata.channel_name,
+        published_date: metadata.published_date,
+        duration: metadata.duration,
         captions: tracks
             .into_iter()
             .map(|track| CaptionOption {
@@ -198,17 +203,14 @@ pub async fn fetch_transcript(
             continue;
         }
 
+        let metadata = build_video_metadata(&info, video_id);
+
         return Ok(TranscriptResult {
-            video_id: info.id.clone().unwrap_or(video_id),
-            title: info
-                .title
-                .clone()
-                .unwrap_or_else(|| info.id.clone().unwrap_or_default()),
-            channel_name: info.channel.clone(),
-            published_date: format_youtube_date(
-                info.release_date.as_ref().or(info.upload_date.as_ref()),
-            ),
-            duration: format_duration(info.duration),
+            video_id: metadata.video_id,
+            title: metadata.title,
+            channel_name: metadata.channel_name,
+            published_date: metadata.published_date,
+            duration: metadata.duration,
             language: track.language,
             source: track.source,
             text,
@@ -220,6 +222,21 @@ pub async fn fetch_transcript(
         "字幕データを取得できませんでした。",
         502,
     ))
+}
+
+fn build_video_metadata(info: &YtDlpInfo, fallback_video_id: String) -> VideoMetadata {
+    VideoMetadata {
+        video_id: info.id.clone().unwrap_or(fallback_video_id),
+        title: info
+            .title
+            .clone()
+            .unwrap_or_else(|| info.id.clone().unwrap_or_default()),
+        channel_name: info.channel.clone(),
+        published_date: format_youtube_date(
+            info.release_date.as_ref().or(info.upload_date.as_ref()),
+        ),
+        duration: format_duration(info.duration),
+    }
 }
 
 fn parse_youtube_video_id(input: &str) -> Result<String, TranscriptError> {
