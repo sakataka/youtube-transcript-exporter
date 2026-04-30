@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "YouTube Transcript Exporter",
+  "productName": "YouTube AI Brief",
   "version": "0.1.0",
-  "identifier": "com.local.youtube-transcript-exporter",
+  "identifier": "com.local.youtube-ai-brief",
   "build": {
     "beforeDevCommand": "bunx vite --host 127.0.0.1 --port 1420",
     "beforeBuildCommand": "bun run build",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "YouTube Transcript Exporter",
+        "title": "YouTube AI Brief",
         "width": 1120,
         "height": 820,
         "minWidth": 820,

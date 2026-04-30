@@ -4,7 +4,8 @@ import { basename, join, resolve } from "node:path";
 const projectRoot = resolve(import.meta.dir, "..");
 const bundleRoot = join(projectRoot, "src-tauri", "target");
 const applicationsDir = resolve(process.env.APPLICATIONS_DIR ?? "/Applications");
-const appName = "YouTube Transcript Exporter.app";
+const appName = "YouTube AI Brief.app";
+const legacyAppNames = ["YouTube Transcript Exporter.app"];
 
 const appPath = findBuiltApp(bundleRoot, appName);
 const destinationPath = join(applicationsDir, basename(appPath));
@@ -18,6 +19,14 @@ if (existsSync(destinationPath)) {
 }
 
 cpSync(appPath, destinationPath, { recursive: true });
+
+for (const legacyAppName of legacyAppNames) {
+  const legacyPath = join(applicationsDir, legacyAppName);
+  if (legacyPath !== destinationPath && existsSync(legacyPath)) {
+    rmSync(legacyPath, { force: true, recursive: true });
+    console.log(`Removed legacy app ${legacyPath}`);
+  }
+}
 
 console.log(`Installed ${appPath}`);
 console.log(`Copied to ${destinationPath}`);

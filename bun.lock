@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "youtube-transcript-exporter",
+      "name": "youtube-ai-brief",
       "dependencies": {
         "@tauri-apps/api": "^2.10.1",
       },

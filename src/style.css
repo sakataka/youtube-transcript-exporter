@@ -358,11 +358,42 @@ textarea {
   font-size: 1.25rem;
 }
 
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #e2e7ec;
+  padding: 12px 18px;
+}
+
+.settings-tab {
+  border: 1px solid #cbd3da;
+  background: #ffffff;
+  color: #243447;
+  min-height: 38px;
+}
+
+.settings-tab.is-active {
+  border-color: #c9352b;
+  background: #fff5f4;
+  color: #a92e27;
+}
+
 .settings-body {
+  padding: 18px;
+}
+
+.settings-section {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   gap: 18px;
-  padding: 18px;
+}
+
+.settings-section[hidden] {
+  display: none;
+}
+
+.settings-section-single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .settings-template-list,
@@ -440,7 +471,7 @@ textarea {
     height: 360px;
   }
 
-  .settings-body {
+  .settings-section {
     grid-template-columns: 1fr;
   }
 

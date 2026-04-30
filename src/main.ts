@@ -46,8 +46,16 @@ type PromptSettings = {
   templates: PromptTemplate[];
 };
 
+type UiLanguage = "ja" | "en";
+
+type AppSettings = {
+  uiLanguage: UiLanguage;
+};
+
 const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1";
+const appSettingsStorageKey = "youtube-transcript-exporter.app-settings.v1";
 const defaultPromptTemplateId = "default";
+const appName = "YouTube AI Brief";
 const defaultPromptTemplates: PromptTemplate[] = [
   {
     id: "default",
@@ -125,6 +133,135 @@ const defaultPromptTemplates: PromptTemplate[] = [
 ];
 
 let promptSettings = loadPromptSettings();
+let appSettings = loadAppSettings();
+let activeSettingsSection: "prompts" | "display" = "prompts";
+
+const uiText = {
+  ja: {
+    eyebrow: "YouTube to AI prompt tool",
+    heading: "YouTube動画をAI向けに整理",
+    status: "ローカル実行",
+    urlLabel: "YouTube URL",
+    captionButton: "字幕を確認",
+    captionButtonLoading: "確認中",
+    hint: "自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。",
+    videoId: "動画ID",
+    selectedLanguage: "選択言語",
+    characterCount: "文字数",
+    copyPrompt: "コピープロンプト",
+    settingsButton: "設定",
+    fetchTranscript: "選択した字幕を取得",
+    fetchTranscriptLoading: "取得中",
+    copy: "コピー",
+    transcriptTitle: "AI向け入力",
+    initialMessage: "URLを入力して字幕候補を確認してください。",
+    captionsTitle: "取得可能な字幕",
+    settingsEyebrow: "Settings",
+    settingsTitle: "設定",
+    close: "閉じる",
+    promptsTab: "プロンプト",
+    displayTab: "表示",
+    template: "テンプレート",
+    add: "追加",
+    delete: "削除",
+    title: "タイトル",
+    description: "説明",
+    body: "本文",
+    defaultTemplate: "このテンプレートを自動コピーのデフォルトにする",
+    reset: "初期状態に戻す",
+    save: "保存",
+    uiLanguage: "UI言語",
+    uiLanguageDescription: "アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。",
+    japanese: "日本語",
+    english: "English",
+    urlRequired: "YouTube URLを入力してください。",
+    chooseCaption: "取得する字幕を選んでください。",
+    noCaptions: "字幕が見つかりません。",
+    listCaptionsFailed: "字幕候補の取得に失敗しました。",
+    captionReady: "選択した字幕を取得できます。",
+    selectCaption: "取得する字幕を選択してください。",
+    fetchingCaptions: "字幕候補を確認しています。",
+    fetchingTranscript: "選択した字幕を取得しています。",
+    fetchTranscriptFailed: "取得に失敗しました。",
+    transcriptCopyFailed: "取得しましたが、クリップボードにコピーできませんでした。コピーボタンを押すか、本文を選択して手動でコピーしてください。",
+    copyFailed: "クリップボードにコピーできませんでした。本文を選択して手動でコピーしてください。",
+    promptChanged: "プロンプトを変更しました。コピーするとこの形式でクリップボードに入ります。",
+    settingsReset: "プロンプト設定を初期状態に戻しました。",
+    settingsSaved: "プロンプト設定を保存しました。",
+    languageSaved: "UI言語を保存しました。",
+    newPrompt: "新しいプロンプト",
+    newPromptDescription: "説明を入力してください",
+    newPromptInstruction: "以下はYouTube動画の字幕です。内容を日本語で整理してください。",
+    untitledPrompt: "無題のプロンプト",
+    copiedWithPrompt: (label: string) => `取得しました。「${label}」プロンプト付きでクリップボードにコピーしました。`,
+    defaultMark: " / デフォルト",
+    manualCaption: "字幕",
+    automaticCaption: "自動字幕",
+    captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`
+  },
+  en: {
+    eyebrow: "YouTube to AI prompt tool",
+    heading: "Prepare YouTube Videos for AI",
+    status: "Local app",
+    urlLabel: "YouTube URL",
+    captionButton: "Check captions",
+    captionButtonLoading: "Checking",
+    hint: "Shows only captions and auto captions attached to the video, excluding auto-translated captions.",
+    videoId: "Video ID",
+    selectedLanguage: "Selected language",
+    characterCount: "Characters",
+    copyPrompt: "Copy prompt",
+    settingsButton: "Settings",
+    fetchTranscript: "Get selected caption",
+    fetchTranscriptLoading: "Getting",
+    copy: "Copy",
+    transcriptTitle: "AI-ready input",
+    initialMessage: "Enter a URL to check available captions.",
+    captionsTitle: "Available captions",
+    settingsEyebrow: "Settings",
+    settingsTitle: "Settings",
+    close: "Close",
+    promptsTab: "Prompts",
+    displayTab: "Display",
+    template: "Template",
+    add: "Add",
+    delete: "Delete",
+    title: "Title",
+    description: "Description",
+    body: "Body",
+    defaultTemplate: "Use this template as the default for automatic copy",
+    reset: "Reset to defaults",
+    save: "Save",
+    uiLanguage: "UI language",
+    uiLanguageDescription: "Changes the app display language. Copied prompt text still uses each template exactly as written.",
+    japanese: "Japanese",
+    english: "English",
+    urlRequired: "Enter a YouTube URL.",
+    chooseCaption: "Choose the caption to fetch.",
+    noCaptions: "No captions found.",
+    listCaptionsFailed: "Failed to fetch caption candidates.",
+    captionReady: "You can get the selected caption.",
+    selectCaption: "Select a caption to fetch.",
+    fetchingCaptions: "Checking caption candidates.",
+    fetchingTranscript: "Getting the selected caption.",
+    fetchTranscriptFailed: "Failed to fetch the transcript.",
+    transcriptCopyFailed: "Fetched the transcript, but could not copy it to the clipboard. Press Copy or select the text manually.",
+    copyFailed: "Could not copy to the clipboard. Select the text and copy it manually.",
+    promptChanged: "Prompt changed. Copy will use this format.",
+    settingsReset: "Prompt settings were reset to defaults.",
+    settingsSaved: "Prompt settings saved.",
+    languageSaved: "UI language saved.",
+    newPrompt: "New prompt",
+    newPromptDescription: "Enter a description",
+    newPromptInstruction: "The following is a YouTube video transcript. Please organize the content clearly.",
+    untitledPrompt: "Untitled prompt",
+    copiedWithPrompt: (label: string) => `Copied with the "${label}" prompt.`,
+    defaultMark: " / Default",
+    manualCaption: "Caption",
+    automaticCaption: "Auto caption",
+    captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`
+  }
+};
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -136,14 +273,14 @@ app.innerHTML = `
   <section class="workspace">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Local YouTube transcript tool</p>
-        <h1>YouTube字幕をテキスト化</h1>
+        <p class="eyebrow" data-i18n="eyebrow">YouTube to AI prompt tool</p>
+        <h1 data-i18n="heading">YouTube動画をAI向けに整理</h1>
       </div>
-      <span class="status-pill" id="runtime-status">ローカル実行</span>
+      <span class="status-pill" id="runtime-status" data-i18n="status">ローカル実行</span>
     </header>
 
     <form class="input-panel" id="caption-form">
-      <label for="youtube-url">YouTube URL</label>
+      <label for="youtube-url" data-i18n="urlLabel">YouTube URL</label>
       <div class="url-row">
         <input
           id="youtube-url"
@@ -154,45 +291,45 @@ app.innerHTML = `
           autofocus
           required
         />
-        <button id="caption-button" type="submit">字幕を確認</button>
+        <button id="caption-button" type="submit" data-i18n="captionButton">字幕を確認</button>
       </div>
-      <p class="hint">自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。</p>
+      <p class="hint" data-i18n="hint">自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。</p>
     </form>
 
     <section class="result-layout" aria-live="polite">
       <div class="meta-panel">
         <div>
-          <span class="label">動画ID</span>
+          <span class="label" data-i18n="videoId">動画ID</span>
           <strong id="video-id">-</strong>
         </div>
         <div>
-          <span class="label">選択言語</span>
+          <span class="label" data-i18n="selectedLanguage">選択言語</span>
           <strong id="language">-</strong>
         </div>
         <div>
-          <span class="label">文字数</span>
+          <span class="label" data-i18n="characterCount">文字数</span>
           <strong id="char-count">0</strong>
         </div>
         <div>
-          <label class="label" for="prompt-template">コピープロンプト</label>
+          <label class="label" for="prompt-template" data-i18n="copyPrompt">コピープロンプト</label>
           <select id="prompt-template"></select>
           <p class="prompt-description" id="prompt-description"></p>
-          <button class="secondary-button" id="prompt-settings-button" type="button">プロンプト設定</button>
+          <button class="secondary-button" id="prompt-settings-button" type="button" data-i18n="settingsButton">設定</button>
         </div>
         <div class="action-buttons">
-          <button id="transcript-button" type="button" disabled>選択した字幕を取得</button>
-          <button id="copy-button" type="button" disabled>コピー</button>
+          <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
+          <button id="copy-button" type="button" disabled data-i18n="copy">コピー</button>
         </div>
       </div>
 
       <div class="output-panel">
         <div class="output-header">
-          <h2 id="video-title">トランスクリプト</h2>
-          <p id="message">URLを入力して字幕候補を確認してください。</p>
+          <h2 id="video-title">AI向け入力</h2>
+          <p id="message" data-i18n="initialMessage">URLを入力して字幕候補を確認してください。</p>
         </div>
         <section class="caption-panel" id="caption-panel" hidden>
           <div class="caption-panel-header">
-            <h3>取得可能な字幕</h3>
+            <h3 data-i18n="captionsTitle">取得可能な字幕</h3>
             <span id="caption-count">0件</span>
           </div>
           <div class="caption-list" id="caption-list"></div>
@@ -205,42 +342,63 @@ app.innerHTML = `
       <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="prompt-settings-title">
         <div class="settings-header">
           <div>
-            <p class="eyebrow">Copy prompt</p>
-            <h2 id="prompt-settings-title">プロンプト設定</h2>
+            <p class="eyebrow" data-i18n="settingsEyebrow">Settings</p>
+            <h2 id="prompt-settings-title" data-i18n="settingsTitle">設定</h2>
           </div>
-          <button class="secondary-button compact-button" id="prompt-settings-close" type="button">閉じる</button>
+          <button class="secondary-button compact-button" id="prompt-settings-close" type="button" data-i18n="close">閉じる</button>
+        </div>
+
+        <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+          <button class="settings-tab is-active" id="settings-prompts-tab" type="button" data-settings-section="prompts" data-i18n="promptsTab">プロンプト</button>
+          <button class="settings-tab" id="settings-display-tab" type="button" data-settings-section="display" data-i18n="displayTab">表示</button>
         </div>
 
         <div class="settings-body">
-          <div class="settings-template-list">
-            <label class="label" for="settings-template-select">テンプレート</label>
-            <select id="settings-template-select" size="6"></select>
-            <div class="settings-actions">
-              <button class="secondary-button" id="settings-add-template" type="button">追加</button>
-              <button class="secondary-button" id="settings-delete-template" type="button">削除</button>
+          <section class="settings-section" id="settings-prompts-section">
+            <div class="settings-template-list">
+              <label class="label" for="settings-template-select" data-i18n="template">テンプレート</label>
+              <select id="settings-template-select" size="6"></select>
+              <div class="settings-actions">
+                <button class="secondary-button" id="settings-add-template" type="button" data-i18n="add">追加</button>
+                <button class="secondary-button" id="settings-delete-template" type="button" data-i18n="delete">削除</button>
+              </div>
             </div>
-          </div>
 
-          <div class="settings-editor">
-            <label class="label" for="settings-template-title">タイトル</label>
-            <input id="settings-template-title" type="text" />
+            <div class="settings-editor">
+              <label class="label" for="settings-template-title" data-i18n="title">タイトル</label>
+              <input id="settings-template-title" type="text" />
 
-            <label class="label" for="settings-template-description">説明</label>
-            <input id="settings-template-description" type="text" />
+              <label class="label" for="settings-template-description" data-i18n="description">説明</label>
+              <input id="settings-template-description" type="text" />
 
-            <label class="label" for="settings-template-body">本文</label>
-            <textarea id="settings-template-body" class="settings-template-body" spellcheck="false"></textarea>
+              <label class="label" for="settings-template-body" data-i18n="body">本文</label>
+              <textarea id="settings-template-body" class="settings-template-body" spellcheck="false"></textarea>
 
-            <label class="default-template-toggle">
-              <input id="settings-template-default" type="checkbox" />
-              <span>このテンプレートを自動コピーのデフォルトにする</span>
-            </label>
+              <label class="default-template-toggle">
+                <input id="settings-template-default" type="checkbox" />
+                <span data-i18n="defaultTemplate">このテンプレートを自動コピーのデフォルトにする</span>
+              </label>
 
-            <div class="settings-footer">
-              <button class="secondary-button" id="settings-reset-template" type="button">初期状態に戻す</button>
-              <button id="settings-save-template" type="button">保存</button>
+              <div class="settings-footer">
+                <button class="secondary-button" id="settings-reset-template" type="button" data-i18n="reset">初期状態に戻す</button>
+                <button id="settings-save-template" type="button" data-i18n="save">保存</button>
+              </div>
             </div>
-          </div>
+          </section>
+
+          <section class="settings-section settings-section-single" id="settings-display-section" hidden>
+            <div class="settings-editor">
+              <label class="label" for="settings-ui-language" data-i18n="uiLanguage">UI言語</label>
+              <select id="settings-ui-language">
+                <option value="ja" data-i18n="japanese">日本語</option>
+                <option value="en" data-i18n="english">English</option>
+              </select>
+              <p class="hint" data-i18n="uiLanguageDescription">アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。</p>
+              <div class="settings-footer">
+                <button id="settings-save-display" type="button" data-i18n="save">保存</button>
+              </div>
+            </div>
+          </section>
         </div>
       </section>
     </div>
@@ -268,6 +426,11 @@ const settingsAddTemplate = document.querySelector<HTMLButtonElement>("#settings
 const settingsDeleteTemplate = document.querySelector<HTMLButtonElement>("#settings-delete-template")!;
 const settingsResetTemplate = document.querySelector<HTMLButtonElement>("#settings-reset-template")!;
 const settingsSaveTemplate = document.querySelector<HTMLButtonElement>("#settings-save-template")!;
+const settingsTabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".settings-tab"));
+const settingsPromptsSection = document.querySelector<HTMLElement>("#settings-prompts-section")!;
+const settingsDisplaySection = document.querySelector<HTMLElement>("#settings-display-section")!;
+const settingsUiLanguage = document.querySelector<HTMLSelectElement>("#settings-ui-language")!;
+const settingsSaveDisplay = document.querySelector<HTMLButtonElement>("#settings-save-display")!;
 const captionPanel = document.querySelector<HTMLElement>("#caption-panel")!;
 const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
 const captionCount = document.querySelector<HTMLElement>("#caption-count")!;
@@ -283,6 +446,7 @@ let selectedCaption: CaptionOption | null = null;
 let latestTranscript: TranscriptSuccess | null = null;
 
 renderPromptTemplates();
+applyUiLanguage();
 focusUrlInput();
 window.addEventListener("load", focusUrlInput);
 
@@ -291,7 +455,7 @@ form.addEventListener("submit", async (event) => {
   const url = urlInput.value.trim();
 
   if (!url) {
-    showError("YouTube URLを入力してください。");
+    showError(t("urlRequired"));
     return;
   }
 
@@ -303,17 +467,17 @@ form.addEventListener("submit", async (event) => {
 
     latestCaptionList = payload;
     selectedCaption = payload.captions[0] ?? null;
-    title.textContent = payload.title || "トランスクリプト";
+    title.textContent = payload.title || t("transcriptTitle");
     videoId.textContent = payload.videoId;
     renderCaptionOptions(payload.captions);
     transcriptButton.disabled = !selectedCaption;
     message.classList.remove("error");
     message.textContent = selectedCaption
-      ? "取得する字幕を選んでください。"
-      : "字幕が見つかりません。";
+      ? t("chooseCaption")
+      : t("noCaptions");
     updateSelectedLanguage();
   } catch (error) {
-    showError(formatInvokeError(error, "字幕候補の取得に失敗しました。"));
+    showError(formatInvokeError(error, t("listCaptionsFailed")));
   } finally {
     setCaptionLoading(false);
   }
@@ -331,14 +495,14 @@ captionList.addEventListener("change", (event) => {
   clearTranscript();
   updateSelectedLanguage();
   message.classList.remove("error");
-  message.textContent = "選択した字幕を取得できます。";
+  message.textContent = t("captionReady");
 });
 
 transcriptButton.addEventListener("click", async () => {
   const url = urlInput.value.trim();
 
   if (!url || !selectedCaption) {
-    showError("取得する字幕を選択してください。");
+    showError(t("selectCaption"));
     return;
   }
 
@@ -353,7 +517,7 @@ transcriptButton.addEventListener("click", async () => {
     });
 
     latestTranscript = payload;
-    title.textContent = payload.title || "トランスクリプト";
+    title.textContent = payload.title || t("transcriptTitle");
     videoId.textContent = payload.videoId;
     language.textContent = formatCaptionLabel({
       language: payload.language,
@@ -367,12 +531,11 @@ transcriptButton.addEventListener("click", async () => {
     try {
       await copyTranscriptToClipboard(payload, getDefaultPromptTemplate());
     } catch {
-      message.textContent =
-        "取得しましたが、クリップボードにコピーできませんでした。コピーボタンを押すか、本文を選択して手動でコピーしてください。";
+      message.textContent = t("transcriptCopyFailed");
       message.classList.add("error");
     }
   } catch (error) {
-    showError(formatInvokeError(error, "取得に失敗しました。"));
+    showError(formatInvokeError(error, t("fetchTranscriptFailed")));
   } finally {
     setTranscriptLoading(false);
   }
@@ -386,7 +549,7 @@ copyButton.addEventListener("click", async () => {
   try {
     await copyTranscriptToClipboard(latestTranscript, getSelectedPromptTemplate());
   } catch {
-    message.textContent = "クリップボードにコピーできませんでした。本文を選択して手動でコピーしてください。";
+    message.textContent = t("copyFailed");
     message.classList.add("error");
   }
 });
@@ -399,7 +562,16 @@ promptTemplateSelect.addEventListener("change", () => {
   }
 
   message.classList.remove("error");
-  message.textContent = "プロンプトを変更しました。コピーするとこの形式でクリップボードに入ります。";
+  message.textContent = t("promptChanged");
+});
+
+settingsTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const section = tab.dataset.settingsSection;
+    if (section === "prompts" || section === "display") {
+      showSettingsSection(section);
+    }
+  });
 });
 
 promptSettingsButton.addEventListener("click", () => {
@@ -423,9 +595,9 @@ settingsTemplateSelect.addEventListener("change", () => {
 settingsAddTemplate.addEventListener("click", () => {
   const template: PromptTemplate = {
     id: `custom-${Date.now()}`,
-    label: "新しいプロンプト",
-    description: "説明を入力してください",
-    instruction: "以下はYouTube動画の字幕です。内容を日本語で整理してください。"
+    label: t("newPrompt"),
+    description: t("newPromptDescription"),
+    instruction: t("newPromptInstruction")
   };
 
   promptSettings.templates.push(template);
@@ -461,7 +633,7 @@ settingsResetTemplate.addEventListener("click", () => {
   renderPromptSettingsList(promptSettings.defaultTemplateId);
   renderPromptSettingsEditor(promptSettings.defaultTemplateId);
   message.classList.remove("error");
-  message.textContent = "プロンプト設定を初期状態に戻しました。";
+  message.textContent = t("settingsReset");
 });
 
 settingsSaveTemplate.addEventListener("click", () => {
@@ -472,9 +644,9 @@ settingsSaveTemplate.addEventListener("click", () => {
     return;
   }
 
-  template.label = settingsTemplateTitle.value.trim() || "無題のプロンプト";
+  template.label = settingsTemplateTitle.value.trim() || t("untitledPrompt");
   template.description = settingsTemplateDescription.value.trim();
-  template.instruction = settingsTemplateBody.value.trim() || "以下はYouTube動画の字幕です。内容を日本語で整理してください。";
+  template.instruction = settingsTemplateBody.value.trim() || t("newPromptInstruction");
 
   if (settingsTemplateDefault.checked) {
     promptSettings.defaultTemplateId = template.id;
@@ -485,7 +657,16 @@ settingsSaveTemplate.addEventListener("click", () => {
   renderPromptSettingsList(template.id);
   renderPromptSettingsEditor(template.id);
   message.classList.remove("error");
-  message.textContent = "プロンプト設定を保存しました。";
+  message.textContent = t("settingsSaved");
+});
+
+settingsSaveDisplay.addEventListener("click", () => {
+  appSettings.uiLanguage = settingsUiLanguage.value === "en" ? "en" : "ja";
+  saveAppSettings();
+  applyUiLanguage();
+  renderPromptSettingsList(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
+  message.classList.remove("error");
+  message.textContent = t("languageSaved");
 });
 
 function renderCaptionOptions(captions: CaptionOption[]) {
@@ -501,35 +682,35 @@ function renderCaptionOptions(captions: CaptionOption[]) {
           />
           <span class="caption-option-body">
             <strong>${escapeHtml(caption.name || caption.language)}</strong>
-            <span>${escapeHtml(caption.language)} / ${caption.source === "manual" ? "字幕" : "自動字幕"}</span>
+            <span>${escapeHtml(caption.language)} / ${caption.source === "manual" ? t("manualCaption") : t("automaticCaption")}</span>
           </span>
         </label>
       `
     )
     .join("");
-  captionCount.textContent = `${captions.length.toLocaleString("ja-JP")}件`;
+  captionCount.textContent = t("captionCount", captions.length);
   captionPanel.hidden = captions.length === 0;
 }
 
 function setCaptionLoading(isLoading: boolean) {
   captionButton.disabled = isLoading;
-  captionButton.textContent = isLoading ? "確認中" : "字幕を確認";
-  message.textContent = isLoading ? "字幕候補を確認しています。" : message.textContent;
+  captionButton.textContent = isLoading ? t("captionButtonLoading") : t("captionButton");
+  message.textContent = isLoading ? t("fetchingCaptions") : message.textContent;
 }
 
 function setTranscriptLoading(isLoading: boolean) {
   transcriptButton.disabled = isLoading || !selectedCaption;
-  transcriptButton.textContent = isLoading ? "取得中" : "選択した字幕を取得";
-  message.textContent = isLoading ? "選択した字幕を取得しています。" : message.textContent;
+  transcriptButton.textContent = isLoading ? t("fetchTranscriptLoading") : t("fetchTranscript");
+  message.textContent = isLoading ? t("fetchingTranscript") : message.textContent;
 }
 
 function clearResult() {
   latestCaptionList = null;
   selectedCaption = null;
   captionList.innerHTML = "";
-  captionCount.textContent = "0件";
+  captionCount.textContent = t("captionCount", 0);
   captionPanel.hidden = true;
-  title.textContent = "トランスクリプト";
+  title.textContent = t("transcriptTitle");
   videoId.textContent = "-";
   language.textContent = "-";
   transcriptButton.disabled = true;
@@ -576,7 +757,7 @@ function updateSelectedLanguage() {
 }
 
 function formatCaptionLabel(caption: CaptionOption) {
-  return `${caption.language} (${caption.source === "manual" ? "字幕" : "自動字幕"})`;
+  return `${caption.language} (${caption.source === "manual" ? t("manualCaption") : t("automaticCaption")})`;
 }
 
 async function copyTranscriptToClipboard(transcript: TranscriptSuccess, template: PromptTemplate) {
@@ -589,7 +770,7 @@ async function copyTranscriptToClipboard(transcript: TranscriptSuccess, template
   }
 
   message.classList.remove("error");
-  message.textContent = `取得しました。「${template.label}」プロンプト付きでクリップボードにコピーしました。`;
+  message.textContent = t("copiedWithPrompt", template.label);
 }
 
 function copyTextWithSelectionFallback(text: string) {
@@ -614,7 +795,7 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
         source: transcript.source,
         isAutoCaption: transcript.source === "automatic"
       })
-    : `${transcript.language} (${transcript.source === "manual" ? "字幕" : "自動字幕"})`;
+    : `${transcript.language} (${transcript.source === "manual" ? t("manualCaption") : t("automaticCaption")})`;
   const metadata = [
     `動画タイトル: ${transcript.title || transcript.videoId}`,
     transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
@@ -700,11 +881,17 @@ function getDefaultPromptTemplate() {
 }
 
 function openPromptSettings() {
+  showSettingsSection(activeSettingsSection);
+  settingsUiLanguage.value = appSettings.uiLanguage;
   renderPromptSettingsList(promptTemplateSelect.value || promptSettings.defaultTemplateId);
   renderPromptSettingsEditor(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
   promptSettingsModal.hidden = false;
-  settingsTemplateTitle.focus();
-  settingsTemplateTitle.select();
+  if (activeSettingsSection === "prompts") {
+    settingsTemplateTitle.focus();
+    settingsTemplateTitle.select();
+  } else {
+    settingsUiLanguage.focus();
+  }
 }
 
 function closePromptSettings() {
@@ -715,7 +902,7 @@ function closePromptSettings() {
 function renderPromptSettingsList(selectedTemplateId: string) {
   settingsTemplateSelect.innerHTML = promptSettings.templates
     .map((template) => {
-      const defaultMark = template.id === promptSettings.defaultTemplateId ? " / デフォルト" : "";
+      const defaultMark = template.id === promptSettings.defaultTemplateId ? t("defaultMark") : "";
       return `<option value="${template.id}">${escapeHtml(template.label)}${defaultMark}</option>`;
     })
     .join("");
@@ -725,6 +912,66 @@ function renderPromptSettingsList(selectedTemplateId: string) {
     ? selectedTemplateId
     : promptSettings.defaultTemplateId;
   settingsDeleteTemplate.disabled = promptSettings.templates.length <= 1;
+}
+
+function showSettingsSection(section: "prompts" | "display") {
+  activeSettingsSection = section;
+  settingsPromptsSection.hidden = section !== "prompts";
+  settingsDisplaySection.hidden = section !== "display";
+  settingsTabs.forEach((tab) => {
+    const isActive = tab.dataset.settingsSection === section;
+    tab.classList.toggle("is-active", isActive);
+    tab.setAttribute("aria-selected", String(isActive));
+  });
+}
+
+function applyUiLanguage() {
+  document.documentElement.lang = appSettings.uiLanguage;
+  document.title = appName;
+  settingsUiLanguage.value = appSettings.uiLanguage;
+  document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
+    const key = element.dataset.i18n;
+    if (!key) {
+      return;
+    }
+    element.textContent = t(key as keyof (typeof uiText)["ja"]);
+  });
+  updatePromptDescription();
+  updateSelectedLanguage();
+  if (!latestCaptionList && !latestTranscript) {
+    title.textContent = t("transcriptTitle");
+  }
+  if (!latestCaptionList) {
+    captionCount.textContent = t("captionCount", 0);
+  }
+}
+
+function t(key: keyof (typeof uiText)["ja"], value?: string | number) {
+  const entry = uiText[appSettings.uiLanguage][key];
+  if (typeof entry === "function") {
+    return entry(value as never);
+  }
+  return entry;
+}
+
+function loadAppSettings(): AppSettings {
+  try {
+    const rawValue = localStorage.getItem(appSettingsStorageKey);
+    if (!rawValue) {
+      return { uiLanguage: "ja" };
+    }
+
+    const parsed = JSON.parse(rawValue) as Partial<AppSettings>;
+    return {
+      uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja"
+    };
+  } catch {
+    return { uiLanguage: "ja" };
+  }
+}
+
+function saveAppSettings() {
+  localStorage.setItem(appSettingsStorageKey, JSON.stringify(appSettings));
 }
 
 function renderPromptSettingsEditor(templateId: string) {

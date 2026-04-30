@@ -1,6 +1,6 @@
-# YouTube Transcript Exporter
+# YouTube AI Brief
 
-公開されているYouTube動画の字幕または自動字幕を取得し、本文テキストとして表示・保存するmacOS向けローカルGUIアプリです。Tauriで動作し、ブラウザやローカルWebサーバーを手動で起動する必要はありません。
+公開されているYouTube動画の字幕または自動字幕を取得し、生成AIに渡しやすいプロンプト付きテキストへ整えるmacOS向けローカルGUIアプリです。動画タイトル、チャンネル名、公開日、動画時間などの補助情報も可能な範囲で付け、ChatGPTなどへ貼り付けて要約・解説・画像生成に使える形にします。
 
 ## 必要なもの
 
@@ -37,7 +37,7 @@ bun run package
 bun run package:install
 ```
 
-このコマンドは `src-tauri/target` 配下に生成された `YouTube Transcript Exporter.app` を `/Applications` に上書きコピーします。コピー先を変える場合は `APPLICATIONS_DIR=/path/to/apps bun run package:install` を使います。
+このコマンドは `src-tauri/target` 配下に生成された `YouTube AI Brief.app` を `/Applications` に上書きコピーします。コピー先を変える場合は `APPLICATIONS_DIR=/path/to/apps bun run package:install` を使います。旧名の `YouTube Transcript Exporter.app` が同じコピー先に残っている場合は削除します。
 
 ## 対応範囲
 
@@ -47,6 +47,7 @@ bun run package:install
 - 自動翻訳字幕は候補から除外します。
 - 取得した本文は、用途別の日本語プロンプトと動画情報を付けてコピーできます。
 - コピー用プロンプトはアプリ内で追加・編集でき、デフォルトも指定できます。
+- UIは設定画面から日本語・英語を切り替えられます。デフォルトは日本語です。
 - 取得できる場合は、チャンネル名、公開日、動画時間もプロンプト内の動画情報に含めます。
 - コピー用プロンプトの最後に、動画内容を1枚の画像にまとめる画像生成依頼を追加します。
 - 自動字幕の場合は、誤認識の可能性をプロンプト内で明示します。
