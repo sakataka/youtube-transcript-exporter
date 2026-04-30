@@ -31,6 +31,14 @@ bun run package
 
 生成された `.app` はFinderからダブルクリックして起動できます。Finder起動時も `yt-dlp` を見つけられるように、アプリ側で `PATH` に加えて `/opt/homebrew/bin/yt-dlp`、`/usr/local/bin/yt-dlp`、`/usr/bin/yt-dlp` を探索します。
 
+ビルドした `.app` を `/Applications` にコピーして、常に最新のアプリを起動したい場合:
+
+```sh
+bun run package:install
+```
+
+このコマンドは `src-tauri/target` 配下に生成された `YouTube Transcript Exporter.app` を `/Applications` に上書きコピーします。コピー先を変える場合は `APPLICATIONS_DIR=/path/to/apps bun run package:install` を使います。
+
 ## 対応範囲
 
 - 公開動画の字幕・自動字幕が取得できる場合のみ対応します。

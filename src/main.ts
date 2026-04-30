@@ -53,6 +53,7 @@ app.innerHTML = `
           type="url"
           placeholder="https://www.youtube.com/watch?v=..."
           autocomplete="off"
+          autofocus
           required
         />
         <button id="caption-button" type="submit">字幕を確認</button>
@@ -120,6 +121,9 @@ const charCount = document.querySelector<HTMLElement>("#char-count")!;
 let latestCaptionList: CaptionListSuccess | null = null;
 let selectedCaption: CaptionOption | null = null;
 let latestTranscript: TranscriptSuccess | null = null;
+
+focusUrlInput();
+window.addEventListener("load", focusUrlInput);
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -201,8 +205,13 @@ transcriptButton.addEventListener("click", async () => {
     copyButton.disabled = payload.text.length === 0;
     downloadButton.disabled = payload.text.length === 0;
     markdownButton.disabled = payload.text.length === 0;
-    message.classList.remove("error");
-    message.textContent = "取得しました。コピーまたはTXT保存できます。";
+    try {
+      await copyTranscriptToClipboard(payload);
+    } catch {
+      message.textContent =
+        "取得しましたが、クリップボードにコピーできませんでした。コピーボタンを押すか、本文を選択して手動でコピーしてください。";
+      message.classList.add("error");
+    }
   } catch (error) {
     showError(formatInvokeError(error, "取得に失敗しました。"));
   } finally {
@@ -216,17 +225,7 @@ copyButton.addEventListener("click", async () => {
   }
 
   try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(latestTranscript.text);
-    } else {
-      output.focus();
-      output.select();
-      document.execCommand("copy");
-      output.setSelectionRange(0, 0);
-    }
-
-    message.classList.remove("error");
-    message.textContent = "クリップボードにコピーしました。";
+    await copyTranscriptToClipboard(latestTranscript);
   } catch {
     message.textContent = "クリップボードにコピーできませんでした。本文を選択して手動でコピーしてください。";
     message.classList.add("error");
@@ -392,6 +391,52 @@ function downloadTextFile(content: string, fileName: string, type: string) {
   link.click();
   link.remove();
   URL.revokeObjectURL(href);
+}
+
+async function copyTranscriptToClipboard(transcript: TranscriptSuccess) {
+  const clipboardText = buildAnalysisPrompt(transcript);
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(clipboardText);
+  } else {
+    copyTextWithSelectionFallback(clipboardText);
+  }
+
+  message.classList.remove("error");
+  message.textContent = "取得しました。ChatGPT向けの定型文付きでクリップボードにコピーしました。";
+}
+
+function copyTextWithSelectionFallback(text: string) {
+  const clipboardBuffer = document.createElement("textarea");
+  clipboardBuffer.value = text;
+  clipboardBuffer.setAttribute("readonly", "");
+  clipboardBuffer.style.position = "fixed";
+  clipboardBuffer.style.inset = "0 auto auto 0";
+  clipboardBuffer.style.opacity = "0";
+  document.body.append(clipboardBuffer);
+  clipboardBuffer.focus();
+  clipboardBuffer.select();
+  document.execCommand("copy");
+  clipboardBuffer.remove();
+}
+
+function buildAnalysisPrompt(transcript: TranscriptSuccess) {
+  return [
+    "以下はYouTube動画の字幕です。この動画で何を言っているのか、内容を日本語でわかりやすく解析・解説してください。",
+    "",
+    `動画タイトル: ${transcript.title || transcript.videoId}`,
+    `YouTube URL: ${urlInput.value.trim()}`,
+    "",
+    "字幕:",
+    transcript.text
+  ].join("\n");
+}
+
+function focusUrlInput() {
+  requestAnimationFrame(() => {
+    urlInput.focus();
+    urlInput.select();
+  });
 }
 
 function escapeHtml(value: string) {
