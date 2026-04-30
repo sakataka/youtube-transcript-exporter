@@ -13,6 +13,7 @@ type CaptionOption = {
 type CaptionListSuccess = {
   videoId: string;
   title: string;
+  channelName?: string;
   captions: CaptionOption[];
 };
 
@@ -21,12 +22,100 @@ type TranscriptSuccess = {
   language: string;
   source: CaptionSource;
   title: string;
+  channelName?: string;
   text: string;
 };
 
 type ApiFailure = {
   error: string;
 };
+
+type PromptTemplateId = "default" | "quick" | "detailed" | "argument" | "study";
+
+type PromptTemplate = {
+  id: PromptTemplateId;
+  label: string;
+  description: string;
+  instruction: string;
+};
+
+const promptTemplates: PromptTemplate[] = [
+  {
+    id: "default",
+    label: "概要 + 詳細",
+    description: "動画の全体像、要点、流れ、結論を整理",
+    instruction: [
+      "以下はYouTube動画の字幕です。内容を日本語でわかりやすく整理してください。",
+      "",
+      "次の形式で回答してください。",
+      "1. この動画の概要",
+      "2. 重要なポイント",
+      "3. 話の流れの詳細",
+      "4. 結論・主張",
+      "5. 背景知識や専門用語の補足",
+      "6. この動画を見るべき人"
+    ].join("\n")
+  },
+  {
+    id: "quick",
+    label: "要点だけ",
+    description: "短時間で把握できる箇条書き",
+    instruction: [
+      "以下はYouTube動画の字幕です。内容を日本語で簡潔に要約してください。",
+      "",
+      "次の形式で回答してください。",
+      "1. 30秒でわかる要約",
+      "2. 重要なポイント5つ",
+      "3. 最後に覚えておくべき結論"
+    ].join("\n")
+  },
+  {
+    id: "detailed",
+    label: "詳しく解説",
+    description: "背景や専門用語まで深く理解",
+    instruction: [
+      "以下はYouTube動画の字幕です。内容を日本語で詳しく解説してください。",
+      "",
+      "次の形式で回答してください。",
+      "1. 全体の概要",
+      "2. 話題ごとの詳しい解説",
+      "3. 背景知識や前提",
+      "4. 専門用語の説明",
+      "5. 実務や学習に使える示唆",
+      "6. 注意点や不確かな点"
+    ].join("\n")
+  },
+  {
+    id: "argument",
+    label: "主張と根拠",
+    description: "議論、結論、根拠を分解",
+    instruction: [
+      "以下はYouTube動画の字幕です。話者の主張、根拠、結論を日本語で整理してください。",
+      "",
+      "次の形式で回答してください。",
+      "1. 話者が一番言いたいこと",
+      "2. 主張ごとの根拠",
+      "3. 反論や弱い前提がありそうな点",
+      "4. 結論",
+      "5. 自分ならどう判断すべきか"
+    ].join("\n")
+  },
+  {
+    id: "study",
+    label: "語学・学習",
+    description: "外国語動画の理解と表現学習",
+    instruction: [
+      "以下はYouTube動画の字幕です。内容を日本語で解説し、学習にも使える形で整理してください。",
+      "",
+      "次の形式で回答してください。",
+      "1. 内容の概要",
+      "2. 重要な表現やキーワード",
+      "3. 文脈上わかりにくい表現の説明",
+      "4. 日本語での自然な言い換え",
+      "5. この動画から学べること"
+    ].join("\n")
+  }
+];
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -75,11 +164,14 @@ app.innerHTML = `
           <span class="label">文字数</span>
           <strong id="char-count">0</strong>
         </div>
+        <div>
+          <label class="label" for="prompt-template">コピープロンプト</label>
+          <select id="prompt-template"></select>
+          <p class="prompt-description" id="prompt-description"></p>
+        </div>
         <div class="action-buttons">
           <button id="transcript-button" type="button" disabled>選択した字幕を取得</button>
           <button id="copy-button" type="button" disabled>コピー</button>
-          <button id="download-button" type="button" disabled>TXT保存</button>
-          <button id="markdown-button" type="button" disabled>Markdown保存</button>
         </div>
       </div>
 
@@ -106,8 +198,8 @@ const urlInput = document.querySelector<HTMLInputElement>("#youtube-url")!;
 const captionButton = document.querySelector<HTMLButtonElement>("#caption-button")!;
 const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-button")!;
 const copyButton = document.querySelector<HTMLButtonElement>("#copy-button")!;
-const downloadButton = document.querySelector<HTMLButtonElement>("#download-button")!;
-const markdownButton = document.querySelector<HTMLButtonElement>("#markdown-button")!;
+const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
+const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
 const captionPanel = document.querySelector<HTMLElement>("#caption-panel")!;
 const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
 const captionCount = document.querySelector<HTMLElement>("#caption-count")!;
@@ -122,6 +214,7 @@ let latestCaptionList: CaptionListSuccess | null = null;
 let selectedCaption: CaptionOption | null = null;
 let latestTranscript: TranscriptSuccess | null = null;
 
+renderPromptTemplates();
 focusUrlInput();
 window.addEventListener("load", focusUrlInput);
 
@@ -203,8 +296,6 @@ transcriptButton.addEventListener("click", async () => {
     output.value = payload.text;
     charCount.textContent = payload.text.length.toLocaleString("ja-JP");
     copyButton.disabled = payload.text.length === 0;
-    downloadButton.disabled = payload.text.length === 0;
-    markdownButton.disabled = payload.text.length === 0;
     try {
       await copyTranscriptToClipboard(payload);
     } catch {
@@ -232,50 +323,15 @@ copyButton.addEventListener("click", async () => {
   }
 });
 
-downloadButton.addEventListener("click", () => {
+promptTemplateSelect.addEventListener("change", () => {
+  updatePromptDescription();
+
   if (!latestTranscript) {
     return;
   }
 
-  downloadTextFile(
-    latestTranscript.text,
-    `${safeFileName(latestTranscript.title || latestTranscript.videoId)}-${latestTranscript.language}.txt`,
-    "text/plain;charset=utf-8"
-  );
-});
-
-markdownButton.addEventListener("click", () => {
-  if (!latestTranscript) {
-    return;
-  }
-
-  const captionLabel = selectedCaption
-    ? formatCaptionLabel({
-        language: latestTranscript.language,
-        name: selectedCaption.name,
-        source: latestTranscript.source,
-        isAutoCaption: latestTranscript.source === "automatic"
-      })
-    : `${latestTranscript.language} (${latestTranscript.source === "manual" ? "字幕" : "自動字幕"})`;
-
-  const markdown = [
-    `# ${latestTranscript.title || latestTranscript.videoId}`,
-    "",
-    `- URL: ${urlInput.value.trim()}`,
-    `- Video ID: ${latestTranscript.videoId}`,
-    `- Caption: ${captionLabel}`,
-    `- Characters: ${latestTranscript.text.length.toLocaleString("ja-JP")}`,
-    "",
-    "## Transcript",
-    "",
-    latestTranscript.text
-  ].join("\n");
-
-  downloadTextFile(
-    markdown,
-    `${safeFileName(latestTranscript.title || latestTranscript.videoId)}-${latestTranscript.language}.md`,
-    "text/markdown;charset=utf-8"
-  );
+  message.classList.remove("error");
+  message.textContent = "プロンプトを変更しました。コピーするとこの形式でクリップボードに入ります。";
 });
 
 function renderCaptionOptions(captions: CaptionOption[]) {
@@ -332,8 +388,6 @@ function clearTranscript() {
   charCount.textContent = "0";
   output.value = "";
   copyButton.disabled = true;
-  downloadButton.disabled = true;
-  markdownButton.disabled = true;
 }
 
 function showError(text: string) {
@@ -342,8 +396,6 @@ function showError(text: string) {
   message.classList.add("error");
   output.value = "";
   copyButton.disabled = true;
-  downloadButton.disabled = true;
-  markdownButton.disabled = true;
 }
 
 function formatInvokeError(error: unknown, fallback: string) {
@@ -373,26 +425,6 @@ function formatCaptionLabel(caption: CaptionOption) {
   return `${caption.language} (${caption.source === "manual" ? "字幕" : "自動字幕"})`;
 }
 
-function safeFileName(value: string) {
-  return value
-    .replace(/[\\/:*?"<>|]+/g, "_")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80) || "transcript";
-}
-
-function downloadTextFile(content: string, fileName: string, type: string) {
-  const blob = new Blob([content], { type });
-  const href = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = href;
-  link.download = fileName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(href);
-}
-
 async function copyTranscriptToClipboard(transcript: TranscriptSuccess) {
   const clipboardText = buildAnalysisPrompt(transcript);
 
@@ -403,7 +435,7 @@ async function copyTranscriptToClipboard(transcript: TranscriptSuccess) {
   }
 
   message.classList.remove("error");
-  message.textContent = "取得しました。ChatGPT向けの定型文付きでクリップボードにコピーしました。";
+  message.textContent = `取得しました。「${getSelectedPromptTemplate().label}」プロンプト付きでクリップボードにコピーしました。`;
 }
 
 function copyTextWithSelectionFallback(text: string) {
@@ -421,15 +453,59 @@ function copyTextWithSelectionFallback(text: string) {
 }
 
 function buildAnalysisPrompt(transcript: TranscriptSuccess) {
-  return [
-    "以下はYouTube動画の字幕です。この動画で何を言っているのか、内容を日本語でわかりやすく解析・解説してください。",
-    "",
+  const captionLabel = selectedCaption
+    ? formatCaptionLabel({
+        language: transcript.language,
+        name: selectedCaption.name,
+        source: transcript.source,
+        isAutoCaption: transcript.source === "automatic"
+      })
+    : `${transcript.language} (${transcript.source === "manual" ? "字幕" : "自動字幕"})`;
+  const metadata = [
     `動画タイトル: ${transcript.title || transcript.videoId}`,
+    transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
     `YouTube URL: ${urlInput.value.trim()}`,
+    `動画ID: ${transcript.videoId}`,
+    `字幕: ${captionLabel}`,
+    `文字数: ${transcript.text.length.toLocaleString("ja-JP")}`
+  ].filter(Boolean);
+  const caution =
+    transcript.source === "automatic"
+      ? [
+          "",
+          "注意: この字幕はYouTubeの自動字幕なので、誤認識が含まれる可能性があります。文脈から補正しながら解説してください。"
+        ]
+      : [];
+
+  return [
+    getSelectedPromptTemplate().instruction,
+    "",
+    "動画情報:",
+    ...metadata,
+    ...caution,
     "",
     "字幕:",
     transcript.text
   ].join("\n");
+}
+
+function renderPromptTemplates() {
+  promptTemplateSelect.innerHTML = promptTemplates
+    .map((template) => `<option value="${template.id}">${escapeHtml(template.label)}</option>`)
+    .join("");
+  promptTemplateSelect.value = "default";
+  updatePromptDescription();
+}
+
+function updatePromptDescription() {
+  promptDescription.textContent = getSelectedPromptTemplate().description;
+}
+
+function getSelectedPromptTemplate() {
+  return (
+    promptTemplates.find((template) => template.id === promptTemplateSelect.value) ??
+    promptTemplates[0]
+  );
 }
 
 function focusUrlInput() {

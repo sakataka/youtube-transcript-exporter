@@ -35,6 +35,7 @@ struct YtDlpCaption {
 struct YtDlpInfo {
     id: Option<String>,
     title: Option<String>,
+    channel: Option<String>,
     subtitles: Option<serde_json::Map<String, serde_json::Value>>,
     automatic_captions: Option<serde_json::Map<String, serde_json::Value>>,
 }
@@ -44,6 +45,7 @@ struct YtDlpInfo {
 pub struct TranscriptResult {
     pub video_id: String,
     pub title: String,
+    pub channel_name: Option<String>,
     pub language: String,
     pub source: CaptionSource,
     pub text: String,
@@ -63,6 +65,7 @@ pub struct CaptionOption {
 pub struct CaptionListResult {
     pub video_id: String,
     pub title: String,
+    pub channel_name: Option<String>,
     pub captions: Vec<CaptionOption>,
 }
 
@@ -100,6 +103,7 @@ pub async fn list_captions(url: &str) -> Result<CaptionListResult, TranscriptErr
             .title
             .clone()
             .unwrap_or_else(|| info.id.clone().unwrap_or_default()),
+        channel_name: info.channel.clone(),
         captions: tracks
             .into_iter()
             .map(|track| CaptionOption {
@@ -165,6 +169,7 @@ pub async fn fetch_transcript(
                 .title
                 .clone()
                 .unwrap_or_else(|| info.id.clone().unwrap_or_default()),
+            channel_name: info.channel.clone(),
             language: track.language,
             source: track.source,
             text,
