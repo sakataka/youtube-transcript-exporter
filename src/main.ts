@@ -15,6 +15,7 @@ type CaptionListSuccess = {
   title: string;
   channelName?: string;
   publishedDate?: string;
+  duration?: string;
   captions: CaptionOption[];
 };
 
@@ -25,6 +26,7 @@ type TranscriptSuccess = {
   title: string;
   channelName?: string;
   publishedDate?: string;
+  duration?: string;
   text: string;
 };
 
@@ -617,6 +619,7 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     `動画タイトル: ${transcript.title || transcript.videoId}`,
     transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
     transcript.publishedDate ? `公開日: ${transcript.publishedDate}` : null,
+    transcript.duration ? `動画時間: ${transcript.duration}` : null,
     `YouTube URL: ${urlInput.value.trim()}`,
     `動画ID: ${transcript.videoId}`,
     `字幕: ${captionLabel}`,
@@ -638,8 +641,22 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     ...caution,
     "",
     "字幕:",
-    transcript.text
+    transcript.text,
+    "",
+    buildImageGenerationInstruction(template)
   ].join("\n");
+}
+
+function buildImageGenerationInstruction(template: PromptTemplate) {
+  return [
+    "最後に、上記の解説内容をもとに、この動画の内容を1枚の画像として生成してください。",
+    `画像は「${template.label}」の用途に合う構成にしてください。`,
+    template.description ? `重視する観点: ${template.description}` : null,
+    "単なる装飾画像ではなく、動画の要点、話の流れ、重要な主張や関係性が一目でわかる情報整理画像にしてください。",
+    "日本語の見出しと短いラベルを使い、読みやすいインフォグラフィックまたは図解として作成してください。"
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function renderPromptTemplates(selectedTemplateId = promptSettings.defaultTemplateId) {

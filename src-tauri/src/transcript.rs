@@ -38,6 +38,7 @@ struct YtDlpInfo {
     channel: Option<String>,
     upload_date: Option<String>,
     release_date: Option<String>,
+    duration: Option<f64>,
     subtitles: Option<serde_json::Map<String, serde_json::Value>>,
     automatic_captions: Option<serde_json::Map<String, serde_json::Value>>,
 }
@@ -49,6 +50,7 @@ pub struct TranscriptResult {
     pub title: String,
     pub channel_name: Option<String>,
     pub published_date: Option<String>,
+    pub duration: Option<String>,
     pub language: String,
     pub source: CaptionSource,
     pub text: String,
@@ -70,6 +72,7 @@ pub struct CaptionListResult {
     pub title: String,
     pub channel_name: Option<String>,
     pub published_date: Option<String>,
+    pub duration: Option<String>,
     pub captions: Vec<CaptionOption>,
 }
 
@@ -111,6 +114,7 @@ pub async fn list_captions(url: &str) -> Result<CaptionListResult, TranscriptErr
         published_date: format_youtube_date(
             info.release_date.as_ref().or(info.upload_date.as_ref()),
         ),
+        duration: format_duration(info.duration),
         captions: tracks
             .into_iter()
             .map(|track| CaptionOption {
@@ -180,6 +184,7 @@ pub async fn fetch_transcript(
             published_date: format_youtube_date(
                 info.release_date.as_ref().or(info.upload_date.as_ref()),
             ),
+            duration: format_duration(info.duration),
             language: track.language,
             source: track.source,
             text,
@@ -367,6 +372,25 @@ fn format_youtube_date(value: Option<&String>) -> Option<String> {
     }
 
     Some(value.to_string())
+}
+
+fn format_duration(value: Option<f64>) -> Option<String> {
+    let seconds = value?.round();
+
+    if !seconds.is_finite() || seconds < 0.0 {
+        return None;
+    }
+
+    let total_seconds = seconds as u64;
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    if hours > 0 {
+        Some(format!("{hours}:{minutes:02}:{seconds:02}"))
+    } else {
+        Some(format!("{minutes}:{seconds:02}"))
+    }
 }
 
 fn collect_tracks(
