@@ -1,10 +1,11 @@
 # YouTube Transcript Exporter
 
-公開されているYouTube動画の字幕または自動字幕を取得し、本文テキストとして表示・保存するローカルWebアプリです。
+公開されているYouTube動画の字幕または自動字幕を取得し、本文テキストとして表示・保存するmacOS向けローカルGUIアプリです。Tauriで動作し、ブラウザやローカルWebサーバーを手動で起動する必要はありません。
 
 ## 必要なもの
 
 - Bun
+- Rust
 - yt-dlp
 
 macOSで `yt-dlp` がない場合:
@@ -13,14 +14,22 @@ macOSで `yt-dlp` がない場合:
 brew install yt-dlp
 ```
 
-## 起動
+## 開発起動
 
 ```sh
 bun install
 bun run app
 ```
 
-起動後、ブラウザで `http://127.0.0.1:3000` を開きます。
+Tauriの開発ウィンドウが起動します。
+
+## macOSアプリの作成
+
+```sh
+bun run package
+```
+
+生成された `.app` はFinderからダブルクリックして起動できます。Finder起動時も `yt-dlp` を見つけられるように、アプリ側で `PATH` に加えて `/opt/homebrew/bin/yt-dlp`、`/usr/local/bin/yt-dlp`、`/usr/bin/yt-dlp` を探索します。
 
 ## 対応範囲
 

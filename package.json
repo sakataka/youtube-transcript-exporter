@@ -5,14 +5,20 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "start": "bun server/index.ts",
-    "app": "bun run build && bun run start",
-    "test": "bun test",
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "app": "tauri dev",
+    "package": "tauri build --bundles app",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
     "@types/bun": "latest",
     "typescript": "latest",
     "vite": "latest"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1"
   }
 }

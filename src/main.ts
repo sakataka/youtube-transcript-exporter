@@ -1,4 +1,5 @@
 import "./style.css";
+import { invoke } from "@tauri-apps/api/core";
 
 type CaptionSource = "manual" | "automatic";
 
@@ -26,9 +27,6 @@ type TranscriptSuccess = {
 type ApiFailure = {
   error: string;
 };
-
-type CaptionListResponse = CaptionListSuccess | ApiFailure;
-type TranscriptResponse = TranscriptSuccess | ApiFailure;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -136,20 +134,7 @@ form.addEventListener("submit", async (event) => {
   clearResult();
 
   try {
-    const response = await fetch("/api/captions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ url })
-    });
-
-    const payload = (await response.json()) as CaptionListResponse;
-
-    if (!response.ok || "error" in payload) {
-      showError("error" in payload ? payload.error : "字幕候補の取得に失敗しました。");
-      return;
-    }
+    const payload = await invoke<CaptionListSuccess>("list_captions", { url });
 
     latestCaptionList = payload;
     selectedCaption = payload.captions[0] ?? null;
@@ -162,8 +147,8 @@ form.addEventListener("submit", async (event) => {
       ? "取得する字幕を選んでください。"
       : "字幕が見つかりません。";
     updateSelectedLanguage();
-  } catch {
-    showError("ローカルAPIに接続できません。`bun run app` で起動しているか確認してください。");
+  } catch (error) {
+    showError(formatInvokeError(error, "字幕候補の取得に失敗しました。"));
   } finally {
     setCaptionLoading(false);
   }
@@ -196,24 +181,11 @@ transcriptButton.addEventListener("click", async () => {
   clearTranscript();
 
   try {
-    const response = await fetch("/api/transcript", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        url,
-        language: selectedCaption.language,
-        source: selectedCaption.source
-      })
+    const payload = await invoke<TranscriptSuccess>("fetch_transcript", {
+      url,
+      language: selectedCaption.language,
+      source: selectedCaption.source
     });
-
-    const payload = (await response.json()) as TranscriptResponse;
-
-    if (!response.ok || "error" in payload) {
-      showError("error" in payload ? payload.error : "取得に失敗しました。");
-      return;
-    }
 
     latestTranscript = payload;
     title.textContent = payload.title || "トランスクリプト";
@@ -231,8 +203,8 @@ transcriptButton.addEventListener("click", async () => {
     markdownButton.disabled = payload.text.length === 0;
     message.classList.remove("error");
     message.textContent = "取得しました。コピーまたはTXT保存できます。";
-  } catch {
-    showError("ローカルAPIに接続できません。`bun run app` で起動しているか確認してください。");
+  } catch (error) {
+    showError(formatInvokeError(error, "取得に失敗しました。"));
   } finally {
     setTranscriptLoading(false);
   }
@@ -373,6 +345,25 @@ function showError(text: string) {
   copyButton.disabled = true;
   downloadButton.disabled = true;
   markdownButton.disabled = true;
+}
+
+function formatInvokeError(error: unknown, fallback: string) {
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error && "error" in error) {
+    const value = (error as ApiFailure).error;
+    if (value) {
+      return value;
+    }
+  }
+
+  return fallback;
 }
 
 function updateSelectedLanguage() {
