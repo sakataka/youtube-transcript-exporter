@@ -193,6 +193,10 @@ input[type="radio"]:focus {
   color: #17202a;
 }
 
+.primary-action button {
+  width: 100%;
+}
+
 .action-buttons {
   display: grid;
   gap: 10px;

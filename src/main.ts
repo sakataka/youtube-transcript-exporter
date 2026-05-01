@@ -361,6 +361,9 @@ app.innerHTML = `
 
     <section class="result-layout" aria-live="polite">
       <div class="meta-panel">
+        <div class="primary-action">
+          <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
+        </div>
         <div>
           <span class="label" data-i18n="videoId">動画ID</span>
           <strong id="video-id">-</strong>
@@ -420,7 +423,6 @@ app.innerHTML = `
           </div>
         </div>
         <div class="action-buttons">
-          <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
           <button id="copy-button" type="button" disabled data-i18n="copy">コピー</button>
         </div>
       </div>
@@ -1285,12 +1287,12 @@ function removeRollingCaptionOverlaps(segments: NormalizedTranscriptSegment[]) {
       continue;
     }
 
-    if (isMeaningfulOverlapText(normalizedPrevious) && normalizedCurrent.startsWith(normalizedPrevious)) {
+    if (normalizedCurrent.startsWith(normalizedPrevious)) {
       cleaned[cleaned.length - 1] = { ...segment, text };
       continue;
     }
 
-    if (isMeaningfulOverlapText(normalizedCurrent) && normalizedPrevious.includes(normalizedCurrent)) {
+    if (normalizedPrevious.includes(normalizedCurrent)) {
       continue;
     }
 
@@ -1311,14 +1313,10 @@ function normalizeForOverlap(text: string) {
   return normalizeTranscriptSegment(text).toLocaleLowerCase();
 }
 
-function isMeaningfulOverlapText(text: string) {
-  return text.length >= 16;
-}
-
 function findRollingOverlapLength(previousText: string, currentText: string) {
   const previous = normalizeForOverlap(previousText);
   const current = normalizeForOverlap(currentText);
-  const minimumOverlapLength = 16;
+  const minimumOverlapLength = 1;
   const maximumOverlapLength = Math.min(previous.length, current.length);
 
   for (let length = maximumOverlapLength; length >= minimumOverlapLength; length -= 1) {
