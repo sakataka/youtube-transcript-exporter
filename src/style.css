@@ -416,7 +416,18 @@ input[type="radio"]:focus {
   border: 1px solid #cfd6dd;
   border-radius: 8px;
   background: #fbfcfd;
+  cursor: pointer;
   padding: 10px;
+}
+
+.search-result:hover {
+  border-color: #2f80ed;
+  background: #f1f7ff;
+}
+
+.search-result:focus {
+  border-color: #2f80ed;
+  outline: 3px solid rgba(47, 128, 237, 0.18);
 }
 
 .search-result-body {

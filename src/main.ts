@@ -181,7 +181,7 @@ const uiText = {
     transcriptSearchReady: "検索語を入力してください。",
     transcriptSearchEmpty: "一致する字幕がありません。",
     transcriptSearchCount: (count: number) => `${count.toLocaleString("ja-JP")}件一致`,
-    openTimestamp: "開く",
+    openTimestamp: "YouTubeで開く",
     settingsButton: "設定",
     fetchTranscript: "選択した字幕を取得",
     fetchTranscriptLoading: "取得中",
@@ -266,7 +266,7 @@ const uiText = {
     transcriptSearchReady: "Enter a search term.",
     transcriptSearchEmpty: "No matching captions found.",
     transcriptSearchCount: (count: number) => `${count.toLocaleString("en-US")} match${count === 1 ? "" : "es"}`,
-    openTimestamp: "Open",
+    openTimestamp: "Open in YouTube",
     settingsButton: "Settings",
     fetchTranscript: "Get selected caption",
     fetchTranscriptLoading: "Getting",
@@ -738,20 +738,41 @@ transcriptSearchInput.addEventListener("input", () => {
   renderTranscriptSearch();
 });
 
-transcriptSearchResults.addEventListener("click", (event) => {
+transcriptSearchResults.addEventListener("click", async (event) => {
   const target = event.target;
 
   if (!(target instanceof HTMLElement)) {
     return;
   }
 
-  const button = target.closest<HTMLButtonElement>("[data-timestamp-url]");
+  const clickable = target.closest<HTMLElement>("[data-timestamp-url]");
 
-  if (!button) {
+  if (!clickable) {
     return;
   }
 
-  window.open(button.dataset.timestampUrl, "_blank", "noopener,noreferrer");
+  await openTimestampUrl(clickable.dataset.timestampUrl);
+});
+
+transcriptSearchResults.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  const target = event.target;
+
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const clickable = target.closest<HTMLElement>(".search-result[data-timestamp-url]");
+
+  if (!clickable) {
+    return;
+  }
+
+  event.preventDefault();
+  await openTimestampUrl(clickable.dataset.timestampUrl);
 });
 
 outputTabs.forEach((tab) => {
@@ -1070,7 +1091,7 @@ function buildTimestampedTranscriptText(transcript: TranscriptSuccess) {
   }
 
   return segments
-    .map((segment) => `${segment.startLabel} ${buildTimestampUrl(segment.startSeconds)} ${segment.text}`)
+    .map((segment) => `${segment.startLabel} ${segment.text}`)
     .join("\n");
 }
 
@@ -1212,7 +1233,7 @@ function renderTranscriptSearch() {
   transcriptSearchResults.innerHTML = matches
     .map(
       (segment) => `
-        <div class="search-result">
+        <div class="search-result" role="button" tabindex="0" data-timestamp-url="${escapeHtml(buildTimestampUrl(segment.startSeconds))}">
           <div class="search-result-body">
             <strong>${escapeHtml(segment.startLabel)}</strong>
             <p>${escapeHtml(truncateSearchResult(segment.text))}</p>
@@ -1240,6 +1261,18 @@ function normalizeSearchText(value: string) {
 function truncateSearchResult(text: string) {
   const normalized = normalizeTranscriptSegment(text);
   return normalized.length > 160 ? `${normalized.slice(0, 160)}...` : normalized;
+}
+
+async function openTimestampUrl(url: string | undefined) {
+  if (!url) {
+    return;
+  }
+
+  try {
+    await invoke("open_youtube_url", { url });
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 }
 
 function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemplate) {
