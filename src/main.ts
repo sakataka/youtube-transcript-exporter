@@ -1100,44 +1100,137 @@ function formatAutomaticTranscriptText(transcript: TranscriptSuccess) {
       .join("\n");
   }
 
+  const joinedText = joinTranscriptParts(segments.map((segment) => segment.text));
+  const paragraphs = formatTranscriptParagraphs(joinedText);
+  return paragraphs.length > 0 ? paragraphs.join("\n\n") : joinedText;
+}
+
+function formatTranscriptParagraphs(text: string) {
+  const normalized = normalizeTranscriptSegment(text);
+
+  if (!normalized) {
+    return [];
+  }
+
+  const sentences = splitTranscriptSentences(normalized);
+  const targetParagraphLength = 650;
+  const maxParagraphLength = 950;
   const paragraphs: string[] = [];
-  let currentParts: string[] = [];
-  let currentLength = 0;
-  let currentStart = segments[0]?.startSeconds ?? 0;
+  let current = "";
 
-  for (const segment of segments) {
-    const text = segment.text;
-    const elapsed = segment.startSeconds - currentStart;
-    const shouldBreakBefore =
-      currentParts.length > 0 && (elapsed >= 70 || currentLength + text.length >= 260);
+  for (const sentence of sentences) {
+    const normalizedSentence = normalizeTranscriptSegment(sentence);
 
-    if (shouldBreakBefore) {
-      paragraphs.push(joinTranscriptParts(currentParts));
-      currentParts = [];
-      currentLength = 0;
-      currentStart = segment.startSeconds;
+    if (!normalizedSentence) {
+      continue;
     }
 
-    currentParts.push(text);
-    currentLength += text.length;
+    if (normalizedSentence.length > maxParagraphLength) {
+      if (current) {
+        paragraphs.push(current);
+        current = "";
+      }
+      paragraphs.push(...splitLongTranscriptText(normalizedSentence, maxParagraphLength));
+      continue;
+    }
 
-    if (endsSentence(text) && currentLength >= 80) {
-      paragraphs.push(joinTranscriptParts(currentParts));
-      currentParts = [];
-      currentLength = 0;
-      currentStart = segment.startSeconds;
+    const next = current ? joinTranscriptParts([current, normalizedSentence]) : normalizedSentence;
+
+    if (current && next.length > maxParagraphLength) {
+      paragraphs.push(current);
+      current = normalizedSentence;
+    } else {
+      current = next;
+    }
+
+    if (current.length >= targetParagraphLength && endsSentence(normalizedSentence)) {
+      paragraphs.push(current);
+      current = "";
     }
   }
 
-  if (currentParts.length > 0) {
-    paragraphs.push(joinTranscriptParts(currentParts));
+  if (current) {
+    paragraphs.push(current);
   }
 
-  return paragraphs.filter(Boolean).join("\n\n");
+  return paragraphs.flatMap((paragraph) => splitLongTranscriptText(paragraph, maxParagraphLength));
 }
 
 function normalizeTranscriptSegment(text: string) {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function splitTranscriptSentences(text: string) {
+  const sentences: string[] = [];
+  let current = "";
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index] ?? "";
+    current += character;
+
+    if (isSentenceBoundary(text, index)) {
+      const sentence = normalizeTranscriptSegment(current);
+      if (sentence) {
+        sentences.push(sentence);
+      }
+      current = "";
+    }
+  }
+
+  const rest = normalizeTranscriptSegment(current);
+  if (rest) {
+    sentences.push(rest);
+  }
+
+  return sentences.length > 0 ? sentences : [text];
+}
+
+function isSentenceBoundary(text: string, index: number) {
+  const character = text[index] ?? "";
+
+  if (/[。！？!?]/.test(character)) {
+    return true;
+  }
+
+  if (character !== ".") {
+    return false;
+  }
+
+  const previous = text[index - 1] ?? "";
+  const next = text[index + 1] ?? "";
+  return !/\d/.test(previous) && (!next || /\s/.test(next));
+}
+
+function splitLongTranscriptText(text: string, maxLength: number) {
+  const paragraphs: string[] = [];
+  let rest = normalizeTranscriptSegment(text);
+
+  while (rest.length > maxLength) {
+    const breakIndex = findParagraphBreakIndex(rest, maxLength);
+    paragraphs.push(normalizeTranscriptSegment(rest.slice(0, breakIndex)));
+    rest = normalizeTranscriptSegment(rest.slice(breakIndex));
+  }
+
+  if (rest) {
+    paragraphs.push(rest);
+  }
+
+  return paragraphs;
+}
+
+function findParagraphBreakIndex(text: string, maxLength: number) {
+  const minimumBreakIndex = Math.floor(maxLength * 0.55);
+  const candidates = ["。", "！", "？", ". ", "! ", "? ", "、", ", ", " "];
+
+  for (const candidate of candidates) {
+    const index = text.lastIndexOf(candidate, maxLength);
+
+    if (index >= minimumBreakIndex) {
+      return index + candidate.length;
+    }
+  }
+
+  return maxLength;
 }
 
 function joinTranscriptParts(parts: string[]) {
