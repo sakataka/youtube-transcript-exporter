@@ -1125,15 +1125,6 @@ function formatTranscriptParagraphs(text: string) {
       continue;
     }
 
-    if (normalizedSentence.length > maxParagraphLength) {
-      if (current) {
-        paragraphs.push(current);
-        current = "";
-      }
-      paragraphs.push(...splitLongTranscriptText(normalizedSentence, maxParagraphLength));
-      continue;
-    }
-
     const next = current ? joinTranscriptParts([current, normalizedSentence]) : normalizedSentence;
 
     if (current && next.length > maxParagraphLength) {
@@ -1153,11 +1144,23 @@ function formatTranscriptParagraphs(text: string) {
     paragraphs.push(current);
   }
 
-  return paragraphs.flatMap((paragraph) => splitLongTranscriptText(paragraph, maxParagraphLength));
+  return paragraphs;
 }
 
 function normalizeTranscriptSegment(text: string) {
-  return text.replace(/\s+/g, " ").trim();
+  return removeUnnaturalJapaneseSpaces(text.replace(/\s+/g, " ").trim());
+}
+
+function removeUnnaturalJapaneseSpaces(text: string) {
+  return text
+    .replace(
+      /([\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}])\s+([\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}、。！？])/gu,
+      "$1$2"
+    )
+    .replace(
+      /([、。！？])\s+([\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}])/gu,
+      "$1$2"
+    );
 }
 
 function splitTranscriptSentences(text: string) {
@@ -1199,38 +1202,6 @@ function isSentenceBoundary(text: string, index: number) {
   const previous = text[index - 1] ?? "";
   const next = text[index + 1] ?? "";
   return !/\d/.test(previous) && (!next || /\s/.test(next));
-}
-
-function splitLongTranscriptText(text: string, maxLength: number) {
-  const paragraphs: string[] = [];
-  let rest = normalizeTranscriptSegment(text);
-
-  while (rest.length > maxLength) {
-    const breakIndex = findParagraphBreakIndex(rest, maxLength);
-    paragraphs.push(normalizeTranscriptSegment(rest.slice(0, breakIndex)));
-    rest = normalizeTranscriptSegment(rest.slice(breakIndex));
-  }
-
-  if (rest) {
-    paragraphs.push(rest);
-  }
-
-  return paragraphs;
-}
-
-function findParagraphBreakIndex(text: string, maxLength: number) {
-  const minimumBreakIndex = Math.floor(maxLength * 0.55);
-  const candidates = ["。", "！", "？", ". ", "! ", "? ", "、", ", ", " "];
-
-  for (const candidate of candidates) {
-    const index = text.lastIndexOf(candidate, maxLength);
-
-    if (index >= minimumBreakIndex) {
-      return index + candidate.length;
-    }
-  }
-
-  return maxLength;
 }
 
 function joinTranscriptParts(parts: string[]) {
