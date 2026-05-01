@@ -193,6 +193,15 @@ input[type="radio"]:focus {
   color: #17202a;
 }
 
+.meta-panel strong a {
+  color: #174a87;
+  text-decoration: none;
+}
+
+.meta-panel strong a:hover {
+  text-decoration: underline;
+}
+
 .primary-action button {
   width: 100%;
 }

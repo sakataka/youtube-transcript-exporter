@@ -41,19 +41,35 @@ struct YtDlpInfo {
     id: Option<String>,
     title: Option<String>,
     channel: Option<String>,
+    description: Option<String>,
+    thumbnail: Option<String>,
+    webpage_url: Option<String>,
+    view_count: Option<u64>,
     upload_date: Option<String>,
     release_date: Option<String>,
     duration: Option<f64>,
+    chapters: Option<Vec<YtDlpChapter>>,
     subtitles: Option<serde_json::Map<String, serde_json::Value>>,
     automatic_captions: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct YtDlpChapter {
+    title: Option<String>,
+    start_time: Option<f64>,
 }
 
 struct VideoMetadata {
     video_id: String,
     title: String,
     channel_name: Option<String>,
+    description: Option<String>,
+    thumbnail_url: Option<String>,
+    webpage_url: Option<String>,
+    view_count: Option<u64>,
     published_date: Option<String>,
     duration: Option<String>,
+    chapters: Vec<VideoChapter>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -62,8 +78,13 @@ pub struct TranscriptResult {
     pub video_id: String,
     pub title: String,
     pub channel_name: Option<String>,
+    pub description: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub webpage_url: Option<String>,
+    pub view_count: Option<u64>,
     pub published_date: Option<String>,
     pub duration: Option<String>,
+    pub chapters: Vec<VideoChapter>,
     pub language: String,
     pub source: CaptionSource,
     pub text: String,
@@ -76,6 +97,14 @@ pub struct TimedTranscriptSegment {
     pub start_seconds: u64,
     pub start_label: String,
     pub text: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoChapter {
+    pub title: String,
+    pub start_seconds: u64,
+    pub start_label: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -93,8 +122,13 @@ pub struct CaptionListResult {
     pub video_id: String,
     pub title: String,
     pub channel_name: Option<String>,
+    pub description: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub webpage_url: Option<String>,
+    pub view_count: Option<u64>,
     pub published_date: Option<String>,
     pub duration: Option<String>,
+    pub chapters: Vec<VideoChapter>,
     pub captions: Vec<CaptionOption>,
 }
 
@@ -132,8 +166,13 @@ pub async fn list_captions(url: &str) -> Result<CaptionListResult, TranscriptErr
         video_id: metadata.video_id,
         title: metadata.title,
         channel_name: metadata.channel_name,
+        description: metadata.description,
+        thumbnail_url: metadata.thumbnail_url,
+        webpage_url: metadata.webpage_url,
+        view_count: metadata.view_count,
         published_date: metadata.published_date,
         duration: metadata.duration,
+        chapters: metadata.chapters,
         captions: tracks
             .into_iter()
             .map(|track| CaptionOption {
@@ -209,8 +248,13 @@ pub async fn fetch_transcript(
             video_id: metadata.video_id,
             title: metadata.title,
             channel_name: metadata.channel_name,
+            description: metadata.description,
+            thumbnail_url: metadata.thumbnail_url,
+            webpage_url: metadata.webpage_url,
+            view_count: metadata.view_count,
             published_date: metadata.published_date,
             duration: metadata.duration,
+            chapters: metadata.chapters,
             language: track.language,
             source: track.source,
             text,
@@ -232,10 +276,15 @@ fn build_video_metadata(info: &YtDlpInfo, fallback_video_id: String) -> VideoMet
             .clone()
             .unwrap_or_else(|| info.id.clone().unwrap_or_default()),
         channel_name: info.channel.clone(),
+        description: normalize_optional_text(info.description.clone()),
+        thumbnail_url: normalize_optional_text(info.thumbnail.clone()),
+        webpage_url: normalize_optional_text(info.webpage_url.clone()),
+        view_count: info.view_count,
         published_date: format_youtube_date(
             info.release_date.as_ref().or(info.upload_date.as_ref()),
         ),
         duration: format_duration(info.duration),
+        chapters: build_video_chapters(info.chapters.as_deref()),
     }
 }
 
@@ -461,6 +510,38 @@ fn format_duration(value: Option<f64>) -> Option<String> {
         Some(format!("{hours}:{minutes:02}:{seconds:02}"))
     } else {
         Some(format!("{minutes}:{seconds:02}"))
+    }
+}
+
+fn build_video_chapters(chapters: Option<&[YtDlpChapter]>) -> Vec<VideoChapter> {
+    chapters
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|chapter| {
+            let title = normalize_optional_text(chapter.title.clone())?;
+            let start_seconds = chapter.start_time?.round();
+
+            if !start_seconds.is_finite() || start_seconds < 0.0 {
+                return None;
+            }
+
+            let start_seconds = start_seconds as u64;
+            Some(VideoChapter {
+                title,
+                start_seconds,
+                start_label: format_timestamp_label(start_seconds),
+            })
+        })
+        .collect()
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    let value = value?.trim().to_string();
+
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
     }
 }
 

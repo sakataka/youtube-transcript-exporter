@@ -14,8 +14,13 @@ type CaptionListSuccess = {
   videoId: string;
   title: string;
   channelName?: string;
+  description?: string;
+  thumbnailUrl?: string;
+  webpageUrl?: string;
+  viewCount?: number;
   publishedDate?: string;
   duration?: string;
+  chapters: VideoChapter[];
   captions: CaptionOption[];
 };
 
@@ -25,8 +30,13 @@ type TranscriptSuccess = {
   source: CaptionSource;
   title: string;
   channelName?: string;
+  description?: string;
+  thumbnailUrl?: string;
+  webpageUrl?: string;
+  viewCount?: number;
   publishedDate?: string;
   duration?: string;
+  chapters: VideoChapter[];
   text: string;
   timedSegments: TimedTranscriptSegment[];
 };
@@ -38,6 +48,12 @@ type TimedTranscriptSegment = {
 };
 
 type NormalizedTranscriptSegment = TimedTranscriptSegment;
+
+type VideoChapter = {
+  title: string;
+  startSeconds: number;
+  startLabel: string;
+};
 
 type ApiFailure = {
   error: string;
@@ -164,6 +180,8 @@ const uiText = {
     selectedLanguage: "選択言語",
     characterCount: "文字数",
     videoDuration: "動画時間",
+    canonicalUrl: "動画URL",
+    viewCount: "再生数",
     captionSourceLabel: "字幕種別",
     segmentCount: "字幕行数",
     copyPrompt: "コピープロンプト",
@@ -247,6 +265,8 @@ const uiText = {
     selectedLanguage: "Selected language",
     characterCount: "Characters",
     videoDuration: "Duration",
+    canonicalUrl: "Video URL",
+    viewCount: "Views",
     captionSourceLabel: "Caption type",
     segmentCount: "Segments",
     copyPrompt: "Copy prompt",
@@ -375,6 +395,14 @@ app.innerHTML = `
         <div>
           <span class="label" data-i18n="videoDuration">動画時間</span>
           <strong id="video-duration">-</strong>
+        </div>
+        <div>
+          <span class="label" data-i18n="canonicalUrl">動画URL</span>
+          <strong id="canonical-url">-</strong>
+        </div>
+        <div>
+          <span class="label" data-i18n="viewCount">再生数</span>
+          <strong id="view-count">-</strong>
         </div>
         <div>
           <span class="label" data-i18n="captionSourceLabel">字幕種別</span>
@@ -555,6 +583,8 @@ const videoId = document.querySelector<HTMLElement>("#video-id")!;
 const language = document.querySelector<HTMLElement>("#language")!;
 const charCount = document.querySelector<HTMLElement>("#char-count")!;
 const videoDuration = document.querySelector<HTMLElement>("#video-duration")!;
+const canonicalUrl = document.querySelector<HTMLElement>("#canonical-url")!;
+const viewCount = document.querySelector<HTMLElement>("#view-count")!;
 const captionSource = document.querySelector<HTMLElement>("#caption-source")!;
 const segmentCount = document.querySelector<HTMLElement>("#segment-count")!;
 const transcriptDisplayModeInputs = Array.from(
@@ -601,6 +631,8 @@ form.addEventListener("submit", async (event) => {
     title.textContent = payload.title || t("transcriptTitle");
     videoId.textContent = payload.videoId;
     videoDuration.textContent = payload.duration || "-";
+    renderCanonicalUrl(payload.webpageUrl);
+    viewCount.textContent = formatCount(payload.viewCount);
     renderCaptionOptions(payload.captions);
     transcriptButton.disabled = !selectedCaption;
     showMessage(selectedCaption ? t("chooseCaption") : t("noCaptions"));
@@ -650,6 +682,8 @@ transcriptButton.addEventListener("click", async () => {
     title.textContent = payload.title || t("transcriptTitle");
     videoId.textContent = payload.videoId;
     videoDuration.textContent = payload.duration || "-";
+    renderCanonicalUrl(payload.webpageUrl);
+    viewCount.textContent = formatCount(payload.viewCount);
     language.textContent = formatCaptionLabel({
       language: payload.language,
       name: selectedCaption.name,
@@ -940,6 +974,8 @@ function clearResult() {
   videoId.textContent = "-";
   language.textContent = "-";
   videoDuration.textContent = "-";
+  renderCanonicalUrl(undefined);
+  viewCount.textContent = "-";
   updateCaptionSource();
   transcriptButton.disabled = true;
   clearTranscript();
@@ -998,6 +1034,21 @@ function updateSelectedLanguage() {
 function updateCaptionSource() {
   const source = latestTranscript?.source ?? selectedCaption?.source;
   captionSource.textContent = source ? formatCaptionSource(source) : "-";
+}
+
+function renderCanonicalUrl(url: string | undefined) {
+  if (!url) {
+    canonicalUrl.textContent = "-";
+    return;
+  }
+
+  canonicalUrl.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a>`;
+}
+
+function formatCount(value: number | undefined) {
+  return typeof value === "number"
+    ? value.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US")
+    : "-";
 }
 
 function formatCaptionLabel(caption: CaptionOption) {
@@ -1414,8 +1465,10 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
     transcript.publishedDate ? `公開日: ${transcript.publishedDate}` : null,
     transcript.duration ? `動画時間: ${transcript.duration}` : null,
-    `YouTube URL: ${urlInput.value.trim()}`,
+    `YouTube URL: ${transcript.webpageUrl || urlInput.value.trim()}`,
     `動画ID: ${transcript.videoId}`,
+    typeof transcript.viewCount === "number" ? `再生数: ${transcript.viewCount.toLocaleString("ja-JP")}` : null,
+    transcript.thumbnailUrl ? `サムネイルURL: ${transcript.thumbnailUrl}` : null,
     `字幕: ${captionLabel}`,
     `文字数: ${transcriptText.length.toLocaleString("ja-JP")}`
   ].filter(Boolean);
@@ -1443,6 +1496,10 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     "",
     "動画情報:",
     ...metadata,
+    "",
+    buildDescriptionSection(transcript),
+    "",
+    buildChapterSection(transcript),
     ...caution,
     "",
     "字幕:",
@@ -1469,6 +1526,39 @@ function buildImageGenerationInstruction(template: PromptTemplate) {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function buildDescriptionSection(transcript: TranscriptSuccess) {
+  const description = truncatePromptSection(transcript.description ?? "", 1800);
+
+  if (!description) {
+    return null;
+  }
+
+  return ["動画説明文:", description].join("\n");
+}
+
+function buildChapterSection(transcript: TranscriptSuccess) {
+  const chapters = transcript.chapters ?? [];
+
+  if (chapters.length === 0) {
+    return null;
+  }
+
+  return [
+    "チャプター:",
+    ...chapters.map((chapter) => `- ${chapter.startLabel}: ${chapter.title}`)
+  ].join("\n");
+}
+
+function truncatePromptSection(value: string, maxLength: number) {
+  const normalized = normalizeTranscriptSegment(value);
+
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
 }
 
 function buildTimedReference(transcript: TranscriptSuccess) {
@@ -1519,7 +1609,7 @@ function truncateForTimedReference(text: string) {
 }
 
 function buildTimestampUrl(startSeconds: number) {
-  const rawUrl = urlInput.value.trim();
+  const rawUrl = latestTranscript?.webpageUrl || latestCaptionList?.webpageUrl || urlInput.value.trim();
 
   try {
     const url = new URL(rawUrl);
@@ -1665,6 +1755,7 @@ function applyUiLanguage() {
   updateCaptionSource();
   updateTranscriptCharacterCount();
   updateTranscriptStats();
+  viewCount.textContent = formatCount(latestTranscript?.viewCount ?? latestCaptionList?.viewCount);
   renderTranscriptSearch();
   renderOutput();
   if (latestCaptionList) {
