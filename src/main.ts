@@ -37,6 +37,8 @@ type TimedTranscriptSegment = {
   text: string;
 };
 
+type NormalizedTranscriptSegment = TimedTranscriptSegment;
+
 type ApiFailure = {
   error: string;
 };
@@ -1096,12 +1098,7 @@ function buildTimestampedTranscriptText(transcript: TranscriptSuccess) {
 }
 
 function formatAutomaticTranscriptText(transcript: TranscriptSuccess) {
-  const segments = (transcript.timedSegments ?? [])
-    .map((segment) => ({
-      ...segment,
-      text: normalizeTranscriptSegment(segment.text)
-    }))
-    .filter((segment) => segment.text.length > 0);
+  const segments = getDisplaySegments(transcript);
 
   if (segments.length === 0) {
     return transcript.text
@@ -1246,12 +1243,91 @@ function renderTranscriptSearch() {
 }
 
 function getSearchableSegments(transcript: TranscriptSuccess) {
-  return (transcript.timedSegments ?? [])
+  return getDisplaySegments(transcript);
+}
+
+function getDisplaySegments(transcript: TranscriptSuccess) {
+  const segments = (transcript.timedSegments ?? [])
     .map((segment) => ({
       ...segment,
       text: normalizeTranscriptSegment(segment.text)
     }))
     .filter((segment) => segment.text.length > 0);
+
+  if (transcript.source !== "automatic" || !appSettings.formatAutomaticTranscript) {
+    return segments;
+  }
+
+  return removeRollingCaptionOverlaps(segments);
+}
+
+function removeRollingCaptionOverlaps(segments: NormalizedTranscriptSegment[]) {
+  const cleaned: NormalizedTranscriptSegment[] = [];
+
+  for (const segment of segments) {
+    const text = normalizeTranscriptSegment(segment.text);
+
+    if (!text) {
+      continue;
+    }
+
+    if (cleaned.length === 0) {
+      cleaned.push({ ...segment, text });
+      continue;
+    }
+
+    const previous = cleaned[cleaned.length - 1];
+    const previousText = previous.text;
+    const normalizedPrevious = normalizeForOverlap(previousText);
+    const normalizedCurrent = normalizeForOverlap(text);
+
+    if (!normalizedCurrent || normalizedCurrent === normalizedPrevious) {
+      continue;
+    }
+
+    if (isMeaningfulOverlapText(normalizedPrevious) && normalizedCurrent.startsWith(normalizedPrevious)) {
+      cleaned[cleaned.length - 1] = { ...segment, text };
+      continue;
+    }
+
+    if (isMeaningfulOverlapText(normalizedCurrent) && normalizedPrevious.includes(normalizedCurrent)) {
+      continue;
+    }
+
+    const overlapLength = findRollingOverlapLength(previousText, text);
+    const nextText = overlapLength > 0 ? normalizeTranscriptSegment(text.slice(overlapLength)) : text;
+
+    if (!nextText) {
+      continue;
+    }
+
+    cleaned.push({ ...segment, text: nextText });
+  }
+
+  return cleaned;
+}
+
+function normalizeForOverlap(text: string) {
+  return normalizeTranscriptSegment(text).toLocaleLowerCase();
+}
+
+function isMeaningfulOverlapText(text: string) {
+  return text.length >= 16;
+}
+
+function findRollingOverlapLength(previousText: string, currentText: string) {
+  const previous = normalizeForOverlap(previousText);
+  const current = normalizeForOverlap(currentText);
+  const minimumOverlapLength = 16;
+  const maximumOverlapLength = Math.min(previous.length, current.length);
+
+  for (let length = maximumOverlapLength; length >= minimumOverlapLength; length -= 1) {
+    if (previous.slice(-length) === current.slice(0, length)) {
+      return length;
+    }
+  }
+
+  return 0;
 }
 
 function normalizeSearchText(value: string) {
