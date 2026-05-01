@@ -166,7 +166,6 @@ const uiText = {
     videoDuration: "動画時間",
     captionSourceLabel: "字幕種別",
     segmentCount: "字幕行数",
-    readingTime: "読了目安",
     copyPrompt: "コピープロンプト",
     copyOptions: "コピー設定",
     includeImagePrompt: "画像生成指示を含める",
@@ -234,8 +233,7 @@ const uiText = {
     defaultMark: " / デフォルト",
     manualCaption: "字幕",
     automaticCaption: "自動字幕",
-    captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`,
-    readingMinutes: (count: number) => `${count.toLocaleString("ja-JP")}分`
+    captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`
   },
   en: {
     eyebrow: "YouTube to AI prompt tool",
@@ -251,7 +249,6 @@ const uiText = {
     videoDuration: "Duration",
     captionSourceLabel: "Caption type",
     segmentCount: "Segments",
-    readingTime: "Reading time",
     copyPrompt: "Copy prompt",
     copyOptions: "Copy settings",
     includeImagePrompt: "Include image generation instructions",
@@ -319,8 +316,7 @@ const uiText = {
     defaultMark: " / Default",
     manualCaption: "Caption",
     automaticCaption: "Auto caption",
-    captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`,
-    readingMinutes: (count: number) => `${count.toLocaleString("en-US")} min`
+    captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`
   }
 };
 
@@ -387,10 +383,6 @@ app.innerHTML = `
         <div>
           <span class="label" data-i18n="segmentCount">字幕行数</span>
           <strong id="segment-count">0</strong>
-        </div>
-        <div>
-          <span class="label" data-i18n="readingTime">読了目安</span>
-          <strong id="reading-time">-</strong>
         </div>
         <div>
           <label class="label" for="prompt-template" data-i18n="copyPrompt">コピープロンプト</label>
@@ -565,7 +557,6 @@ const charCount = document.querySelector<HTMLElement>("#char-count")!;
 const videoDuration = document.querySelector<HTMLElement>("#video-duration")!;
 const captionSource = document.querySelector<HTMLElement>("#caption-source")!;
 const segmentCount = document.querySelector<HTMLElement>("#segment-count")!;
-const readingTime = document.querySelector<HTMLElement>("#reading-time")!;
 const transcriptDisplayModeInputs = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="transcript-display-mode"]')
 );
@@ -959,7 +950,6 @@ function clearTranscript() {
   latestTranscript = null;
   charCount.textContent = "0";
   segmentCount.textContent = "0";
-  readingTime.textContent = "-";
   copyButton.disabled = true;
   transcriptSearchInput.value = "";
   renderTranscriptSearch();
@@ -1177,15 +1167,11 @@ function updateTranscriptCharacterCount() {
 function updateTranscriptStats() {
   if (!latestTranscript) {
     segmentCount.textContent = "0";
-    readingTime.textContent = "-";
     return;
   }
 
   const segmentTotal = getSearchableSegments(latestTranscript).length;
-  const characterTotal = getTranscriptTextForDisplay(latestTranscript).length;
-  const estimatedMinutes = Math.max(1, Math.ceil(characterTotal / 500));
   segmentCount.textContent = segmentTotal.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
-  readingTime.textContent = t("readingMinutes", estimatedMinutes);
 }
 
 function renderTranscriptDisplayMode() {
