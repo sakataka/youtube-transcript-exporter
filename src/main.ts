@@ -57,6 +57,9 @@ type UiLanguage = "ja" | "en";
 
 type AppSettings = {
   uiLanguage: UiLanguage;
+  includeImagePrompt: boolean;
+  formatAutomaticTranscript: boolean;
+  recentUrls: string[];
 };
 
 const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1";
@@ -156,6 +159,9 @@ const uiText = {
     selectedLanguage: "選択言語",
     characterCount: "文字数",
     copyPrompt: "コピープロンプト",
+    copyOptions: "コピー設定",
+    includeImagePrompt: "画像生成指示を含める",
+    formatAutomaticTranscript: "自動字幕を読みやすく整形",
     transcriptView: "字幕本文",
     copyPromptView: "コピー用プロンプト",
     settingsButton: "設定",
@@ -195,6 +201,7 @@ const uiText = {
     transcriptCopyFailed: "取得しましたが、クリップボードにコピーできませんでした。コピーボタンを押すか、本文を選択して手動でコピーしてください。",
     copyFailed: "クリップボードにコピーできませんでした。本文を選択して手動でコピーしてください。",
     promptChanged: "プロンプトを変更しました。コピーするとこの形式でクリップボードに入ります。",
+    copyOptionsChanged: "コピー設定を変更しました。表示とコピー内容に反映しました。",
     settingsReset: "プロンプト設定を初期状態に戻しました。",
     settingsSaved: "プロンプト設定を保存しました。",
     languageSaved: "UI言語を保存しました。",
@@ -220,6 +227,9 @@ const uiText = {
     selectedLanguage: "Selected language",
     characterCount: "Characters",
     copyPrompt: "Copy prompt",
+    copyOptions: "Copy settings",
+    includeImagePrompt: "Include image generation instructions",
+    formatAutomaticTranscript: "Clean up auto captions",
     transcriptView: "Transcript",
     copyPromptView: "Copy prompt",
     settingsButton: "Settings",
@@ -259,6 +269,7 @@ const uiText = {
     transcriptCopyFailed: "Fetched the transcript, but could not copy it to the clipboard. Press Copy or select the text manually.",
     copyFailed: "Could not copy to the clipboard. Select the text and copy it manually.",
     promptChanged: "Prompt changed. Copy will use this format.",
+    copyOptionsChanged: "Copy settings updated. Display and copied text now use them.",
     settingsReset: "Prompt settings were reset to defaults.",
     settingsSaved: "Prompt settings saved.",
     languageSaved: "UI language saved.",
@@ -297,11 +308,13 @@ app.innerHTML = `
           id="youtube-url"
           name="url"
           type="url"
+          list="recent-url-list"
           placeholder="https://www.youtube.com/watch?v=..."
           autocomplete="off"
           autofocus
           required
         />
+        <datalist id="recent-url-list"></datalist>
         <button id="caption-button" type="submit" data-i18n="captionButton">字幕を確認</button>
       </div>
       <p class="hint" data-i18n="hint">自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。</p>
@@ -326,6 +339,17 @@ app.innerHTML = `
           <select id="prompt-template"></select>
           <p class="prompt-description" id="prompt-description"></p>
           <button class="secondary-button" id="prompt-settings-button" type="button" data-i18n="settingsButton">設定</button>
+        </div>
+        <div>
+          <span class="label" data-i18n="copyOptions">コピー設定</span>
+          <label class="option-toggle">
+            <input id="include-image-prompt" type="checkbox" />
+            <span data-i18n="includeImagePrompt">画像生成指示を含める</span>
+          </label>
+          <label class="option-toggle">
+            <input id="format-automatic-transcript" type="checkbox" />
+            <span data-i18n="formatAutomaticTranscript">自動字幕を読みやすく整形</span>
+          </label>
         </div>
         <div class="action-buttons">
           <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
@@ -422,12 +446,15 @@ app.innerHTML = `
 
 const form = document.querySelector<HTMLFormElement>("#caption-form")!;
 const urlInput = document.querySelector<HTMLInputElement>("#youtube-url")!;
+const recentUrlList = document.querySelector<HTMLDataListElement>("#recent-url-list")!;
 const captionButton = document.querySelector<HTMLButtonElement>("#caption-button")!;
 const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-button")!;
 const copyButton = document.querySelector<HTMLButtonElement>("#copy-button")!;
 const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
 const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
 const promptSettingsButton = document.querySelector<HTMLButtonElement>("#prompt-settings-button")!;
+const includeImagePrompt = document.querySelector<HTMLInputElement>("#include-image-prompt")!;
+const formatAutomaticTranscript = document.querySelector<HTMLInputElement>("#format-automatic-transcript")!;
 const promptSettingsModal = document.querySelector<HTMLDivElement>("#prompt-settings-modal")!;
 const promptSettingsClose = document.querySelector<HTMLButtonElement>("#prompt-settings-close")!;
 const settingsTemplateSelect = document.querySelector<HTMLSelectElement>("#settings-template-select")!;
@@ -464,6 +491,8 @@ let outputMode: "transcript" | "copyPrompt" = "transcript";
 let elementToRestoreFocus: HTMLElement | null = null;
 
 renderPromptTemplates();
+renderAppOptions();
+renderRecentUrls();
 applyUiLanguage();
 focusUrlInput();
 window.addEventListener("load", focusUrlInput);
@@ -483,6 +512,7 @@ form.addEventListener("submit", async (event) => {
   try {
     const payload = await invoke<CaptionListSuccess>("list_captions", { url });
 
+    rememberRecentUrl(url);
     latestCaptionList = payload;
     selectedCaption = payload.captions[0] ?? null;
     title.textContent = payload.title || t("transcriptTitle");
@@ -539,8 +569,7 @@ transcriptButton.addEventListener("click", async () => {
       source: payload.source,
       isAutoCaption: payload.source === "automatic"
     });
-    output.value = payload.text;
-    charCount.textContent = payload.text.length.toLocaleString("ja-JP");
+    updateTranscriptCharacterCount();
     copyButton.disabled = payload.text.length === 0;
     renderOutput();
     try {
@@ -576,6 +605,22 @@ promptTemplateSelect.addEventListener("change", () => {
   }
 
   showMessage(t("promptChanged"));
+});
+
+includeImagePrompt.addEventListener("change", () => {
+  appSettings.includeImagePrompt = includeImagePrompt.checked;
+  saveAppSettings();
+  renderOutput();
+  updateTranscriptCharacterCount();
+  showMessage(t("copyOptionsChanged"));
+});
+
+formatAutomaticTranscript.addEventListener("change", () => {
+  appSettings.formatAutomaticTranscript = formatAutomaticTranscript.checked;
+  saveAppSettings();
+  renderOutput();
+  updateTranscriptCharacterCount();
+  showMessage(t("copyOptionsChanged"));
 });
 
 outputTabs.forEach((tab) => {
@@ -833,7 +878,7 @@ function renderOutput() {
   output.value =
     outputMode === "copyPrompt"
       ? buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate())
-      : latestTranscript.text;
+      : getTranscriptTextForCopy(latestTranscript);
 }
 
 function copyTextWithSelectionFallback(text: string) {
@@ -850,7 +895,97 @@ function copyTextWithSelectionFallback(text: string) {
   clipboardBuffer.remove();
 }
 
+function getTranscriptTextForCopy(transcript: TranscriptSuccess) {
+  if (transcript.source !== "automatic" || !appSettings.formatAutomaticTranscript) {
+    return transcript.text;
+  }
+
+  const formatted = formatAutomaticTranscriptText(transcript);
+  return formatted || transcript.text;
+}
+
+function formatAutomaticTranscriptText(transcript: TranscriptSuccess) {
+  const segments = (transcript.timedSegments ?? [])
+    .map((segment) => ({
+      ...segment,
+      text: normalizeTranscriptSegment(segment.text)
+    }))
+    .filter((segment) => segment.text.length > 0);
+
+  if (segments.length === 0) {
+    return transcript.text
+      .split(/\n+/)
+      .map(normalizeTranscriptSegment)
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  const paragraphs: string[] = [];
+  let currentParts: string[] = [];
+  let currentLength = 0;
+  let currentStart = segments[0]?.startSeconds ?? 0;
+
+  for (const segment of segments) {
+    const text = segment.text;
+    const elapsed = segment.startSeconds - currentStart;
+    const shouldBreakBefore =
+      currentParts.length > 0 && (elapsed >= 70 || currentLength + text.length >= 260);
+
+    if (shouldBreakBefore) {
+      paragraphs.push(joinTranscriptParts(currentParts));
+      currentParts = [];
+      currentLength = 0;
+      currentStart = segment.startSeconds;
+    }
+
+    currentParts.push(text);
+    currentLength += text.length;
+
+    if (endsSentence(text) && currentLength >= 80) {
+      paragraphs.push(joinTranscriptParts(currentParts));
+      currentParts = [];
+      currentLength = 0;
+      currentStart = segment.startSeconds;
+    }
+  }
+
+  if (currentParts.length > 0) {
+    paragraphs.push(joinTranscriptParts(currentParts));
+  }
+
+  return paragraphs.filter(Boolean).join("\n\n");
+}
+
+function normalizeTranscriptSegment(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function joinTranscriptParts(parts: string[]) {
+  return parts.reduce((joined, part) => {
+    if (!joined) {
+      return part;
+    }
+
+    return shouldJoinWithoutSpace(joined, part) ? `${joined}${part}` : `${joined} ${part}`;
+  }, "");
+}
+
+function shouldJoinWithoutSpace(left: string, right: string) {
+  return /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]$/u.test(left) ||
+    /^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}、。！？]/u.test(right);
+}
+
+function endsSentence(text: string) {
+  return /[。！？.!?]$/.test(text);
+}
+
+function updateTranscriptCharacterCount() {
+  const count = latestTranscript ? getTranscriptTextForCopy(latestTranscript).length : 0;
+  charCount.textContent = count.toLocaleString("ja-JP");
+}
+
 function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemplate) {
+  const transcriptText = getTranscriptTextForCopy(transcript);
   const captionLabel = selectedCaption
     ? formatCaptionLabel({
         language: transcript.language,
@@ -867,7 +1002,7 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     `YouTube URL: ${urlInput.value.trim()}`,
     `動画ID: ${transcript.videoId}`,
     `字幕: ${captionLabel}`,
-    `文字数: ${transcript.text.length.toLocaleString("ja-JP")}`
+    `文字数: ${transcriptText.length.toLocaleString("ja-JP")}`
   ].filter(Boolean);
   const caution =
     transcript.source === "automatic"
@@ -896,11 +1031,11 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     ...caution,
     "",
     "字幕:",
-    transcript.text,
+    transcriptText,
     "",
     buildTimedReference(transcript),
     "",
-    buildImageGenerationInstruction(template)
+    appSettings.includeImagePrompt ? buildImageGenerationInstruction(template) : null
   ]
     .filter((line) => line !== null)
     .join("\n");
@@ -1000,6 +1135,32 @@ function updatePromptDescription() {
   promptDescription.textContent = getSelectedPromptTemplate().description;
 }
 
+function renderAppOptions() {
+  includeImagePrompt.checked = appSettings.includeImagePrompt;
+  formatAutomaticTranscript.checked = appSettings.formatAutomaticTranscript;
+}
+
+function renderRecentUrls() {
+  recentUrlList.innerHTML = appSettings.recentUrls
+    .map((url) => `<option value="${escapeHtml(url)}"></option>`)
+    .join("");
+}
+
+function rememberRecentUrl(url: string) {
+  const normalized = url.trim();
+
+  if (!normalized) {
+    return;
+  }
+
+  appSettings.recentUrls = [
+    normalized,
+    ...appSettings.recentUrls.filter((recentUrl) => recentUrl !== normalized)
+  ].slice(0, 5);
+  saveAppSettings();
+  renderRecentUrls();
+}
+
 function getSelectedPromptTemplate() {
   return (
     promptSettings.templates.find((template) => template.id === promptTemplateSelect.value) ??
@@ -1068,6 +1229,7 @@ function applyUiLanguage() {
   document.documentElement.lang = appSettings.uiLanguage;
   document.title = appName;
   settingsUiLanguage.value = appSettings.uiLanguage;
+  renderAppOptions();
   document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
     const key = element.dataset.i18n;
     if (!key) {
@@ -1077,6 +1239,7 @@ function applyUiLanguage() {
   });
   updatePromptDescription();
   updateSelectedLanguage();
+  updateTranscriptCharacterCount();
   renderOutput();
   if (latestCaptionList) {
     renderCaptionOptions(latestCaptionList.captions);
@@ -1122,23 +1285,45 @@ function t(key: keyof (typeof uiText)["ja"], value?: string | number) {
 }
 
 function loadAppSettings(): AppSettings {
+  const fallback: AppSettings = {
+    uiLanguage: "ja",
+    includeImagePrompt: true,
+    formatAutomaticTranscript: true,
+    recentUrls: []
+  };
+
   try {
     const rawValue = localStorage.getItem(appSettingsStorageKey);
     if (!rawValue) {
-      return { uiLanguage: "ja" };
+      return fallback;
     }
 
     const parsed = JSON.parse(rawValue) as Partial<AppSettings>;
     return {
-      uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja"
+      uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja",
+      includeImagePrompt: parsed.includeImagePrompt !== false,
+      formatAutomaticTranscript: parsed.formatAutomaticTranscript !== false,
+      recentUrls: normalizeRecentUrls(parsed.recentUrls)
     };
   } catch {
-    return { uiLanguage: "ja" };
+    return fallback;
   }
 }
 
 function saveAppSettings() {
   localStorage.setItem(appSettingsStorageKey, JSON.stringify(appSettings));
+}
+
+function normalizeRecentUrls(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((url): url is string => typeof url === "string" && url.trim().length > 0)
+    .map((url) => url.trim())
+    .filter((url, index, urls) => urls.indexOf(url) === index)
+    .slice(0, 5);
 }
 
 function renderPromptSettingsEditor(templateId: string) {

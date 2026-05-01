@@ -209,6 +209,26 @@ input[type="radio"]:focus {
   width: 100%;
 }
 
+.option-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  color: #243447;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.option-toggle + .option-toggle {
+  margin-top: 10px;
+}
+
+.option-toggle input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+}
+
 .output-panel {
   min-height: 620px;
   overflow: hidden;
