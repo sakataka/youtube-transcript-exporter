@@ -229,6 +229,49 @@ input[type="radio"]:focus {
   margin: 0;
 }
 
+.display-mode-control {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.display-mode-control .label {
+  margin-bottom: 0;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.segmented-control label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #cbd3da;
+  border-radius: 6px;
+  background: #fbfcfd;
+  color: #243447;
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.segmented-control label:has(input:checked) {
+  border-color: #2f80ed;
+  background: #f1f7ff;
+  color: #174a87;
+}
+
+.segmented-control input {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+}
+
 .output-panel {
   min-height: 620px;
   overflow: hidden;
@@ -324,6 +367,73 @@ input[type="radio"]:focus {
 .caption-option-body span {
   color: #607080;
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.search-panel {
+  border-bottom: 1px solid #e2e7ec;
+  padding: 14px 18px 18px;
+}
+
+.search-panel[hidden] {
+  display: none;
+}
+
+.search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.search-header h3 {
+  margin: 0;
+  color: #17202a;
+  font-size: 1rem;
+}
+
+.search-header span {
+  color: #607080;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.search-results {
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  margin-top: 12px;
+  overflow: auto;
+}
+
+.search-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #cfd6dd;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 10px;
+}
+
+.search-result-body {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.search-result-body strong {
+  color: #174a87;
+  font-size: 0.9rem;
+}
+
+.search-result-body p {
+  margin: 0;
+  color: #243447;
+  font-size: 0.92rem;
   overflow-wrap: anywhere;
 }
 
@@ -518,7 +628,9 @@ textarea {
 
   .settings-actions,
   .settings-footer,
-  .output-tabs {
+  .output-tabs,
+  .search-result {
     display: grid;
+    grid-template-columns: 1fr;
   }
 }

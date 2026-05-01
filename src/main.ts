@@ -59,8 +59,11 @@ type AppSettings = {
   uiLanguage: UiLanguage;
   includeImagePrompt: boolean;
   formatAutomaticTranscript: boolean;
+  transcriptDisplayMode: TranscriptDisplayMode;
   recentUrls: string[];
 };
+
+type TranscriptDisplayMode = "plain" | "timestamped";
 
 const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1";
 const appSettingsStorageKey = "youtube-transcript-exporter.app-settings.v1";
@@ -158,12 +161,27 @@ const uiText = {
     videoId: "動画ID",
     selectedLanguage: "選択言語",
     characterCount: "文字数",
+    videoDuration: "動画時間",
+    captionSourceLabel: "字幕種別",
+    segmentCount: "字幕行数",
+    readingTime: "読了目安",
     copyPrompt: "コピープロンプト",
     copyOptions: "コピー設定",
     includeImagePrompt: "画像生成指示を含める",
     formatAutomaticTranscript: "自動字幕を読みやすく整形",
+    transcriptDisplayModeLabel: "字幕表示",
+    plainTranscript: "通常",
+    timestampedTranscript: "タイムスタンプ付き",
     transcriptView: "字幕本文",
     copyPromptView: "コピー用プロンプト",
+    transcriptSearchTitle: "字幕内検索",
+    transcriptSearchLabel: "検索語",
+    transcriptSearchPlaceholder: "字幕を検索",
+    transcriptSearchDisabled: "字幕取得後に検索できます。",
+    transcriptSearchReady: "検索語を入力してください。",
+    transcriptSearchEmpty: "一致する字幕がありません。",
+    transcriptSearchCount: (count: number) => `${count.toLocaleString("ja-JP")}件一致`,
+    openTimestamp: "開く",
     settingsButton: "設定",
     fetchTranscript: "選択した字幕を取得",
     fetchTranscriptLoading: "取得中",
@@ -193,6 +211,7 @@ const uiText = {
     chooseCaption: "取得する字幕を選んでください。",
     noCaptions: "字幕が見つかりません。",
     listCaptionsFailed: "字幕候補の取得に失敗しました。",
+    ytDlpInstallHint: "Homebrewの場合は `brew install yt-dlp` を実行してから、アプリを再起動してください。",
     captionReady: "選択した字幕を取得できます。",
     selectCaption: "取得する字幕を選択してください。",
     fetchingCaptions: "字幕候補を確認しています。",
@@ -213,7 +232,8 @@ const uiText = {
     defaultMark: " / デフォルト",
     manualCaption: "字幕",
     automaticCaption: "自動字幕",
-    captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`
+    captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`,
+    readingMinutes: (count: number) => `${count.toLocaleString("ja-JP")}分`
   },
   en: {
     eyebrow: "YouTube to AI prompt tool",
@@ -226,12 +246,27 @@ const uiText = {
     videoId: "Video ID",
     selectedLanguage: "Selected language",
     characterCount: "Characters",
+    videoDuration: "Duration",
+    captionSourceLabel: "Caption type",
+    segmentCount: "Segments",
+    readingTime: "Reading time",
     copyPrompt: "Copy prompt",
     copyOptions: "Copy settings",
     includeImagePrompt: "Include image generation instructions",
     formatAutomaticTranscript: "Clean up auto captions",
+    transcriptDisplayModeLabel: "Transcript display",
+    plainTranscript: "Plain",
+    timestampedTranscript: "Timestamped",
     transcriptView: "Transcript",
     copyPromptView: "Copy prompt",
+    transcriptSearchTitle: "Search transcript",
+    transcriptSearchLabel: "Search term",
+    transcriptSearchPlaceholder: "Search transcript",
+    transcriptSearchDisabled: "Search is available after fetching a transcript.",
+    transcriptSearchReady: "Enter a search term.",
+    transcriptSearchEmpty: "No matching captions found.",
+    transcriptSearchCount: (count: number) => `${count.toLocaleString("en-US")} match${count === 1 ? "" : "es"}`,
+    openTimestamp: "Open",
     settingsButton: "Settings",
     fetchTranscript: "Get selected caption",
     fetchTranscriptLoading: "Getting",
@@ -261,6 +296,7 @@ const uiText = {
     chooseCaption: "Choose the caption to fetch.",
     noCaptions: "No captions found.",
     listCaptionsFailed: "Failed to fetch caption candidates.",
+    ytDlpInstallHint: "If you use Homebrew, run `brew install yt-dlp`, then restart the app.",
     captionReady: "You can get the selected caption.",
     selectCaption: "Select a caption to fetch.",
     fetchingCaptions: "Checking caption candidates.",
@@ -281,7 +317,8 @@ const uiText = {
     defaultMark: " / Default",
     manualCaption: "Caption",
     automaticCaption: "Auto caption",
-    captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`
+    captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`,
+    readingMinutes: (count: number) => `${count.toLocaleString("en-US")} min`
   }
 };
 
@@ -335,6 +372,22 @@ app.innerHTML = `
           <strong id="char-count">0</strong>
         </div>
         <div>
+          <span class="label" data-i18n="videoDuration">動画時間</span>
+          <strong id="video-duration">-</strong>
+        </div>
+        <div>
+          <span class="label" data-i18n="captionSourceLabel">字幕種別</span>
+          <strong id="caption-source">-</strong>
+        </div>
+        <div>
+          <span class="label" data-i18n="segmentCount">字幕行数</span>
+          <strong id="segment-count">0</strong>
+        </div>
+        <div>
+          <span class="label" data-i18n="readingTime">読了目安</span>
+          <strong id="reading-time">-</strong>
+        </div>
+        <div>
           <label class="label" for="prompt-template" data-i18n="copyPrompt">コピープロンプト</label>
           <select id="prompt-template"></select>
           <p class="prompt-description" id="prompt-description"></p>
@@ -350,6 +403,19 @@ app.innerHTML = `
             <input id="format-automatic-transcript" type="checkbox" />
             <span data-i18n="formatAutomaticTranscript">自動字幕を読みやすく整形</span>
           </label>
+          <div class="display-mode-control" role="group" aria-labelledby="transcript-display-mode-label">
+            <span class="label" id="transcript-display-mode-label" data-i18n="transcriptDisplayModeLabel">字幕表示</span>
+            <div class="segmented-control">
+              <label>
+                <input type="radio" name="transcript-display-mode" value="plain" />
+                <span data-i18n="plainTranscript">通常</span>
+              </label>
+              <label>
+                <input type="radio" name="transcript-display-mode" value="timestamped" />
+                <span data-i18n="timestampedTranscript">タイムスタンプ付き</span>
+              </label>
+            </div>
+          </div>
         </div>
         <div class="action-buttons">
           <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
@@ -368,6 +434,15 @@ app.innerHTML = `
             <span id="caption-count">0件</span>
           </div>
           <div class="caption-list" id="caption-list"></div>
+        </section>
+        <section class="search-panel" id="transcript-search-panel" hidden>
+          <div class="search-header">
+            <h3 data-i18n="transcriptSearchTitle">字幕内検索</h3>
+            <span id="transcript-search-count" data-i18n="transcriptSearchDisabled">字幕取得後に検索できます。</span>
+          </div>
+          <label class="label" for="transcript-search" data-i18n="transcriptSearchLabel">検索語</label>
+          <input id="transcript-search" type="search" autocomplete="off" disabled data-i18n-placeholder="transcriptSearchPlaceholder" />
+          <div class="search-results" id="transcript-search-results"></div>
         </section>
         <div class="output-tabs" role="tablist" aria-label="Output view">
           <button class="output-tab is-active" id="transcript-view-tab" type="button" data-output-mode="transcript" role="tab" aria-selected="true" aria-controls="transcript-output" data-i18n="transcriptView">字幕本文</button>
@@ -483,6 +558,17 @@ const title = document.querySelector<HTMLHeadingElement>("#video-title")!;
 const videoId = document.querySelector<HTMLElement>("#video-id")!;
 const language = document.querySelector<HTMLElement>("#language")!;
 const charCount = document.querySelector<HTMLElement>("#char-count")!;
+const videoDuration = document.querySelector<HTMLElement>("#video-duration")!;
+const captionSource = document.querySelector<HTMLElement>("#caption-source")!;
+const segmentCount = document.querySelector<HTMLElement>("#segment-count")!;
+const readingTime = document.querySelector<HTMLElement>("#reading-time")!;
+const transcriptDisplayModeInputs = Array.from(
+  document.querySelectorAll<HTMLInputElement>('input[name="transcript-display-mode"]')
+);
+const transcriptSearchPanel = document.querySelector<HTMLElement>("#transcript-search-panel")!;
+const transcriptSearchInput = document.querySelector<HTMLInputElement>("#transcript-search")!;
+const transcriptSearchCount = document.querySelector<HTMLElement>("#transcript-search-count")!;
+const transcriptSearchResults = document.querySelector<HTMLDivElement>("#transcript-search-results")!;
 
 let latestCaptionList: CaptionListSuccess | null = null;
 let selectedCaption: CaptionOption | null = null;
@@ -493,6 +579,8 @@ let elementToRestoreFocus: HTMLElement | null = null;
 renderPromptTemplates();
 renderAppOptions();
 renderRecentUrls();
+renderTranscriptDisplayMode();
+renderTranscriptSearch();
 applyUiLanguage();
 focusUrlInput();
 window.addEventListener("load", focusUrlInput);
@@ -517,10 +605,12 @@ form.addEventListener("submit", async (event) => {
     selectedCaption = payload.captions[0] ?? null;
     title.textContent = payload.title || t("transcriptTitle");
     videoId.textContent = payload.videoId;
+    videoDuration.textContent = payload.duration || "-";
     renderCaptionOptions(payload.captions);
     transcriptButton.disabled = !selectedCaption;
     showMessage(selectedCaption ? t("chooseCaption") : t("noCaptions"));
     updateSelectedLanguage();
+    updateCaptionSource();
   } catch (error) {
     showError(formatInvokeError(error, t("listCaptionsFailed")));
   } finally {
@@ -539,6 +629,7 @@ captionList.addEventListener("change", (event) => {
   transcriptButton.disabled = !selectedCaption;
   clearTranscript();
   updateSelectedLanguage();
+  updateCaptionSource();
   showMessage(t("captionReady"));
 });
 
@@ -563,13 +654,17 @@ transcriptButton.addEventListener("click", async () => {
     latestTranscript = payload;
     title.textContent = payload.title || t("transcriptTitle");
     videoId.textContent = payload.videoId;
+    videoDuration.textContent = payload.duration || "-";
     language.textContent = formatCaptionLabel({
       language: payload.language,
       name: selectedCaption.name,
       source: payload.source,
       isAutoCaption: payload.source === "automatic"
     });
+    updateCaptionSource();
     updateTranscriptCharacterCount();
+    updateTranscriptStats();
+    renderTranscriptSearch();
     copyButton.disabled = payload.text.length === 0;
     renderOutput();
     try {
@@ -612,6 +707,7 @@ includeImagePrompt.addEventListener("change", () => {
   saveAppSettings();
   renderOutput();
   updateTranscriptCharacterCount();
+  updateTranscriptStats();
   showMessage(t("copyOptionsChanged"));
 });
 
@@ -620,7 +716,42 @@ formatAutomaticTranscript.addEventListener("change", () => {
   saveAppSettings();
   renderOutput();
   updateTranscriptCharacterCount();
+  updateTranscriptStats();
   showMessage(t("copyOptionsChanged"));
+});
+
+transcriptDisplayModeInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    if (input.checked && isTranscriptDisplayMode(input.value)) {
+      appSettings.transcriptDisplayMode = input.value;
+      saveAppSettings();
+      renderTranscriptDisplayMode();
+      renderOutput();
+      updateTranscriptCharacterCount();
+      updateTranscriptStats();
+      showMessage(t("copyOptionsChanged"));
+    }
+  });
+});
+
+transcriptSearchInput.addEventListener("input", () => {
+  renderTranscriptSearch();
+});
+
+transcriptSearchResults.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const button = target.closest<HTMLButtonElement>("[data-timestamp-url]");
+
+  if (!button) {
+    return;
+  }
+
+  window.open(button.dataset.timestampUrl, "_blank", "noopener,noreferrer");
 });
 
 outputTabs.forEach((tab) => {
@@ -792,6 +923,8 @@ function clearResult() {
   title.textContent = t("transcriptTitle");
   videoId.textContent = "-";
   language.textContent = "-";
+  videoDuration.textContent = "-";
+  updateCaptionSource();
   transcriptButton.disabled = true;
   clearTranscript();
   message.classList.remove("error");
@@ -800,7 +933,11 @@ function clearResult() {
 function clearTranscript() {
   latestTranscript = null;
   charCount.textContent = "0";
+  segmentCount.textContent = "0";
+  readingTime.textContent = "-";
   copyButton.disabled = true;
+  transcriptSearchInput.value = "";
+  renderTranscriptSearch();
   renderOutput();
 }
 
@@ -817,26 +954,35 @@ function showMessage(text: string, isError = false) {
 }
 
 function formatInvokeError(error: unknown, fallback: string) {
+  let message = "";
+
   if (typeof error === "string" && error.trim()) {
-    return error;
-  }
-
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-
-  if (typeof error === "object" && error && "error" in error) {
+    message = error;
+  } else if (error instanceof Error && error.message.trim()) {
+    message = error.message;
+  } else if (typeof error === "object" && error && "error" in error) {
     const value = (error as ApiFailure).error;
-    if (value) {
-      return value;
-    }
+    message = value || "";
   }
 
-  return fallback;
+  if (!message) {
+    message = fallback;
+  }
+
+  if (message.includes("yt-dlp") && !message.includes("brew install yt-dlp")) {
+    return `${message}\n${t("ytDlpInstallHint")}`;
+  }
+
+  return message;
 }
 
 function updateSelectedLanguage() {
   language.textContent = selectedCaption ? formatCaptionLabel(selectedCaption) : "-";
+}
+
+function updateCaptionSource() {
+  const source = latestTranscript?.source ?? selectedCaption?.source;
+  captionSource.textContent = source ? formatCaptionSource(source) : "-";
 }
 
 function formatCaptionLabel(caption: CaptionOption) {
@@ -878,7 +1024,7 @@ function renderOutput() {
   output.value =
     outputMode === "copyPrompt"
       ? buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate())
-      : getTranscriptTextForCopy(latestTranscript);
+      : getTranscriptTextForDisplay(latestTranscript);
 }
 
 function copyTextWithSelectionFallback(text: string) {
@@ -895,13 +1041,37 @@ function copyTextWithSelectionFallback(text: string) {
   clipboardBuffer.remove();
 }
 
-function getTranscriptTextForCopy(transcript: TranscriptSuccess) {
+function getTranscriptTextForDisplay(transcript: TranscriptSuccess) {
+  if (appSettings.transcriptDisplayMode === "timestamped") {
+    const timestampedText = buildTimestampedTranscriptText(transcript);
+
+    if (timestampedText) {
+      return timestampedText;
+    }
+  }
+
+  return getPlainTranscriptText(transcript);
+}
+
+function getPlainTranscriptText(transcript: TranscriptSuccess) {
   if (transcript.source !== "automatic" || !appSettings.formatAutomaticTranscript) {
     return transcript.text;
   }
 
   const formatted = formatAutomaticTranscriptText(transcript);
   return formatted || transcript.text;
+}
+
+function buildTimestampedTranscriptText(transcript: TranscriptSuccess) {
+  const segments = getSearchableSegments(transcript);
+
+  if (segments.length === 0) {
+    return "";
+  }
+
+  return segments
+    .map((segment) => `${segment.startLabel} ${buildTimestampUrl(segment.startSeconds)} ${segment.text}`)
+    .join("\n");
 }
 
 function formatAutomaticTranscriptText(transcript: TranscriptSuccess) {
@@ -980,12 +1150,100 @@ function endsSentence(text: string) {
 }
 
 function updateTranscriptCharacterCount() {
-  const count = latestTranscript ? getTranscriptTextForCopy(latestTranscript).length : 0;
-  charCount.textContent = count.toLocaleString("ja-JP");
+  const count = latestTranscript ? getTranscriptTextForDisplay(latestTranscript).length : 0;
+  charCount.textContent = count.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
+}
+
+function updateTranscriptStats() {
+  if (!latestTranscript) {
+    segmentCount.textContent = "0";
+    readingTime.textContent = "-";
+    return;
+  }
+
+  const segmentTotal = getSearchableSegments(latestTranscript).length;
+  const characterTotal = getTranscriptTextForDisplay(latestTranscript).length;
+  const estimatedMinutes = Math.max(1, Math.ceil(characterTotal / 500));
+  segmentCount.textContent = segmentTotal.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
+  readingTime.textContent = t("readingMinutes", estimatedMinutes);
+}
+
+function renderTranscriptDisplayMode() {
+  transcriptDisplayModeInputs.forEach((input) => {
+    input.checked = input.value === appSettings.transcriptDisplayMode;
+  });
+}
+
+function isTranscriptDisplayMode(value: unknown): value is TranscriptDisplayMode {
+  return value === "plain" || value === "timestamped";
+}
+
+function renderTranscriptSearch() {
+  const segments = latestTranscript ? getSearchableSegments(latestTranscript) : [];
+  transcriptSearchPanel.hidden = !latestTranscript;
+  transcriptSearchInput.disabled = segments.length === 0;
+
+  if (!latestTranscript) {
+    transcriptSearchCount.textContent = t("transcriptSearchDisabled");
+    transcriptSearchResults.innerHTML = "";
+    return;
+  }
+
+  if (segments.length === 0) {
+    transcriptSearchCount.textContent = t("transcriptSearchDisabled");
+    transcriptSearchResults.innerHTML = "";
+    return;
+  }
+
+  const query = normalizeSearchText(transcriptSearchInput.value);
+
+  if (!query) {
+    transcriptSearchCount.textContent = t("transcriptSearchReady");
+    transcriptSearchResults.innerHTML = "";
+    return;
+  }
+
+  const matches = segments
+    .filter((segment) => normalizeSearchText(segment.text).includes(query))
+    .slice(0, 50);
+
+  transcriptSearchCount.textContent =
+    matches.length === 0 ? t("transcriptSearchEmpty") : t("transcriptSearchCount", matches.length);
+  transcriptSearchResults.innerHTML = matches
+    .map(
+      (segment) => `
+        <div class="search-result">
+          <div class="search-result-body">
+            <strong>${escapeHtml(segment.startLabel)}</strong>
+            <p>${escapeHtml(truncateSearchResult(segment.text))}</p>
+          </div>
+          <button class="secondary-button compact-button" type="button" data-timestamp-url="${escapeHtml(buildTimestampUrl(segment.startSeconds))}" data-i18n="openTimestamp">${t("openTimestamp")}</button>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function getSearchableSegments(transcript: TranscriptSuccess) {
+  return (transcript.timedSegments ?? [])
+    .map((segment) => ({
+      ...segment,
+      text: normalizeTranscriptSegment(segment.text)
+    }))
+    .filter((segment) => segment.text.length > 0);
+}
+
+function normalizeSearchText(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+function truncateSearchResult(text: string) {
+  const normalized = normalizeTranscriptSegment(text);
+  return normalized.length > 160 ? `${normalized.slice(0, 160)}...` : normalized;
 }
 
 function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemplate) {
-  const transcriptText = getTranscriptTextForCopy(transcript);
+  const transcriptText = getTranscriptTextForDisplay(transcript);
   const captionLabel = selectedCaption
     ? formatCaptionLabel({
         language: transcript.language,
@@ -1033,7 +1291,7 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     "字幕:",
     transcriptText,
     "",
-    buildTimedReference(transcript),
+    appSettings.transcriptDisplayMode === "timestamped" ? null : buildTimedReference(transcript),
     "",
     appSettings.includeImagePrompt ? buildImageGenerationInstruction(template) : null
   ]
@@ -1138,6 +1396,7 @@ function updatePromptDescription() {
 function renderAppOptions() {
   includeImagePrompt.checked = appSettings.includeImagePrompt;
   formatAutomaticTranscript.checked = appSettings.formatAutomaticTranscript;
+  renderTranscriptDisplayMode();
 }
 
 function renderRecentUrls() {
@@ -1237,9 +1496,19 @@ function applyUiLanguage() {
     }
     element.textContent = t(key as keyof (typeof uiText)["ja"]);
   });
+  document.querySelectorAll<HTMLInputElement>("[data-i18n-placeholder]").forEach((element) => {
+    const key = element.dataset.i18nPlaceholder;
+    if (!key) {
+      return;
+    }
+    element.placeholder = t(key as keyof (typeof uiText)["ja"]);
+  });
   updatePromptDescription();
   updateSelectedLanguage();
+  updateCaptionSource();
   updateTranscriptCharacterCount();
+  updateTranscriptStats();
+  renderTranscriptSearch();
   renderOutput();
   if (latestCaptionList) {
     renderCaptionOptions(latestCaptionList.captions);
@@ -1289,6 +1558,7 @@ function loadAppSettings(): AppSettings {
     uiLanguage: "ja",
     includeImagePrompt: true,
     formatAutomaticTranscript: true,
+    transcriptDisplayMode: "plain",
     recentUrls: []
   };
 
@@ -1299,10 +1569,14 @@ function loadAppSettings(): AppSettings {
     }
 
     const parsed = JSON.parse(rawValue) as Partial<AppSettings>;
+    const transcriptDisplayMode = isTranscriptDisplayMode(parsed.transcriptDisplayMode)
+      ? parsed.transcriptDisplayMode
+      : "plain";
     return {
       uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja",
       includeImagePrompt: parsed.includeImagePrompt !== false,
       formatAutomaticTranscript: parsed.formatAutomaticTranscript !== false,
+      transcriptDisplayMode,
       recentUrls: normalizeRecentUrls(parsed.recentUrls)
     };
   } catch {
