@@ -47,6 +47,7 @@ struct YtDlpInfo {
     view_count: Option<u64>,
     upload_date: Option<String>,
     release_date: Option<String>,
+    language: Option<String>,
     duration: Option<f64>,
     chapters: Option<Vec<YtDlpChapter>>,
     subtitles: Option<serde_json::Map<String, serde_json::Value>>,
@@ -154,7 +155,7 @@ impl TranscriptError {
 pub async fn list_captions(url: &str) -> Result<CaptionListResult, TranscriptError> {
     let video_id = parse_youtube_video_id(url)?;
     let info = get_ytdlp_info(url).await?;
-    let tracks = get_selectable_tracks(&info);
+    let tracks = rank_caption_tracks(&info);
 
     if tracks.is_empty() {
         return Err(TranscriptError::bad_request("字幕が見つかりません。"));
@@ -340,6 +341,12 @@ fn rank_caption_tracks(info: &YtDlpInfo) -> Vec<CaptionTrack> {
     }
 
     let mut ranked: Vec<CaptionTrack> = Vec::new();
+    add_unique(
+        &mut ranked,
+        info.language
+            .as_deref()
+            .and_then(|language| find_preferred_language(&tracks, language)),
+    );
     add_unique(&mut ranked, find_preferred_language(&tracks, "ja"));
     add_unique(&mut ranked, find_preferred_language(&tracks, "en"));
 
@@ -1017,6 +1024,25 @@ mod tests {
         })));
 
         assert_eq!(track.unwrap().language, "ja");
+    }
+
+    #[test]
+    fn puts_video_language_caption_first_when_available() {
+        let tracks = rank_caption_tracks(&info(serde_json::json!({
+            "language": "en",
+            "subtitles": {
+                "ja": [{ "ext": "vtt", "url": "https://example.com/ja.vtt" }],
+                "en": [{ "ext": "vtt", "url": "https://example.com/en.vtt" }]
+            }
+        })));
+
+        assert_eq!(
+            tracks
+                .iter()
+                .map(|track| track.language.as_str())
+                .collect::<Vec<_>>(),
+            ["en", "ja"]
+        );
     }
 
     #[test]

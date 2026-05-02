@@ -87,6 +87,56 @@ const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1
 const appSettingsStorageKey = "youtube-transcript-exporter.app-settings.v1";
 const defaultPromptTemplateId = "default";
 const appName = "YouTube AI Brief";
+const legacyPromptTemplateInstructions: Record<string, string> = {
+  default: [
+    "以下はYouTube動画の字幕です。内容を日本語でわかりやすく整理してください。",
+    "",
+    "次の形式で回答してください。",
+    "1. この動画の概要",
+    "2. 重要なポイント",
+    "3. 話の流れの詳細",
+    "4. 結論・主張"
+  ].join("\n"),
+  quick: [
+    "以下はYouTube動画の字幕です。内容を日本語で簡潔に要約してください。",
+    "",
+    "次の形式で回答してください。",
+    "1. 30秒でわかる要約",
+    "2. 重要なポイント5つ",
+    "3. 最後に覚えておくべき結論"
+  ].join("\n"),
+  detailed: [
+    "以下はYouTube動画の字幕です。内容を日本語で詳しく解説してください。",
+    "",
+    "次の形式で回答してください。",
+    "1. 全体の概要",
+    "2. 話題ごとの詳しい解説",
+    "3. 背景知識や前提",
+    "4. 専門用語の説明",
+    "5. 実務や学習に使える示唆",
+    "6. 注意点や不確かな点"
+  ].join("\n"),
+  argument: [
+    "以下はYouTube動画の字幕です。話者の主張、根拠、結論を日本語で整理してください。",
+    "",
+    "次の形式で回答してください。",
+    "1. 話者が一番言いたいこと",
+    "2. 主張ごとの根拠",
+    "3. 反論や弱い前提がありそうな点",
+    "4. 結論",
+    "5. 自分ならどう判断すべきか"
+  ].join("\n"),
+  study: [
+    "以下はYouTube動画の字幕です。内容を日本語で解説し、学習にも使える形で整理してください。",
+    "",
+    "次の形式で回答してください。",
+    "1. 内容の概要",
+    "2. 重要な表現やキーワード",
+    "3. 文脈上わかりにくい表現の説明",
+    "4. 日本語での自然な言い換え",
+    "5. この動画から学べること"
+  ].join("\n")
+};
 const defaultPromptTemplates: PromptTemplate[] = [
   {
     id: "default",
@@ -143,7 +193,8 @@ const defaultPromptTemplates: PromptTemplate[] = [
       "2. 主張ごとの根拠",
       "3. 反論や弱い前提がありそうな点",
       "4. 結論",
-      "5. 自分ならどう判断すべきか"
+      "5. 現時点の最新状況と照らした客観的な確認",
+      "6. 自分ならどう判断すべきか"
     ].join("\n")
   },
   {
@@ -1045,6 +1096,23 @@ function renderCanonicalUrl(url: string | undefined) {
   canonicalUrl.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a>`;
 }
 
+canonicalUrl.addEventListener("click", async (event) => {
+  const target = event.target;
+
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const link = target.closest<HTMLAnchorElement>("a[href]");
+
+  if (!link) {
+    return;
+  }
+
+  event.preventDefault();
+  await openTimestampUrl(link.href);
+});
+
 function formatCount(value: number | undefined) {
   return typeof value === "number"
     ? value.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US")
@@ -1452,6 +1520,11 @@ async function openTimestampUrl(url: string | undefined) {
 
 function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemplate) {
   const transcriptText = getTranscriptTextForDisplay(transcript);
+  const promptCreatedDate = new Date().toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
   const captionLabel = selectedCaption
     ? formatCaptionLabel({
         language: transcript.language,
@@ -1464,6 +1537,7 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     `動画タイトル: ${transcript.title || transcript.videoId}`,
     transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
     transcript.publishedDate ? `公開日: ${transcript.publishedDate}` : null,
+    `確認基準日: ${promptCreatedDate}`,
     transcript.duration ? `動画時間: ${transcript.duration}` : null,
     `YouTube URL: ${transcript.webpageUrl || urlInput.value.trim()}`,
     `動画ID: ${transcript.videoId}`,
@@ -1492,6 +1566,8 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     "",
     "補足情報の扱い:",
     "動画字幕だけでは固有名詞、出来事、製品名、人物名、専門用語、時事的背景が不明確な場合は、必要に応じてインターネット上の信頼できる情報も参照して補足してください。",
+    "動画に登場している人物や話している人物を、タイトル、チャンネル名、説明欄、字幕などから特定できる場合は、その人物がどういう人かを信頼できる情報で簡潔に調べて説明してください。特定できない場合は、無理に推測せず、この人物調査は省略してください。",
+    "主張、根拠、数値、時事的な説明、製品・制度・企業・人物に関する内容は、動画公開時点と現時点で状況が変わっている可能性を考慮し、最新の信頼できる情報で確認してください。動画内の説明が現在も妥当か、変化した点があるかを、出典や根拠に基づいて客観的にチェックしてください。",
     "ただし、字幕から読み取れる内容と外部情報から補った内容は混同せず、不確かな点は不確かだと明示してください。",
     "",
     "動画情報:",
@@ -1876,6 +1952,7 @@ function loadPromptSettings(): PromptSettings {
       ? parsed.templates
           .map(normalizePromptTemplate)
           .filter((template): template is PromptTemplate => Boolean(template))
+          .map(migrateBuiltInPromptTemplate)
       : [];
 
     if (templates.length === 0) {
@@ -1905,6 +1982,20 @@ function createDefaultPromptSettings(): PromptSettings {
   return {
     defaultTemplateId: defaultPromptTemplateId,
     templates: defaultPromptTemplates.map((template) => ({ ...template }))
+  };
+}
+
+function migrateBuiltInPromptTemplate(template: PromptTemplate): PromptTemplate {
+  const currentTemplate = defaultPromptTemplates.find((item) => item.id === template.id);
+  const legacyInstruction = legacyPromptTemplateInstructions[template.id];
+
+  if (!currentTemplate || template.instruction !== legacyInstruction) {
+    return template;
+  }
+
+  return {
+    ...template,
+    instruction: currentTemplate.instruction
   };
 }
 
