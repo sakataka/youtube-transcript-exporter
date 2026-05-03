@@ -25,3 +25,4 @@
 - Tauri/Rust側の字幕取得処理は `src-tauri/src/transcript.rs`。
 - コピー用プロンプト設定とUI言語設定は `localStorage` に保存する。
 - `/Applications` へコピーする処理は `scripts/install-app.ts`。
+- 配布用に最新アプリへ反映するときは、`bun run package:install` を実行し、`/Applications/YouTube AI Brief.app` が更新されていることを確認する。
