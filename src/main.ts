@@ -652,6 +652,7 @@ let latestTranscript: TranscriptSuccess | null = null;
 let outputMode: "transcript" | "copyPrompt" = "transcript";
 let elementToRestoreFocus: HTMLElement | null = null;
 
+clearUrlInputOnLaunch();
 renderPromptTemplates();
 renderAppOptions();
 renderRecentUrls();
@@ -670,30 +671,16 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  setCaptionLoading(true);
-  clearResult();
+  await checkCaptionCandidates(url);
+});
 
-  try {
-    const payload = await invoke<CaptionListSuccess>("list_captions", { url });
-
-    rememberRecentUrl(url);
-    latestCaptionList = payload;
-    selectedCaption = payload.captions[0] ?? null;
-    title.textContent = payload.title || t("transcriptTitle");
-    videoId.textContent = payload.videoId;
-    videoDuration.textContent = payload.duration || "-";
-    renderCanonicalUrl(payload.webpageUrl);
-    viewCount.textContent = formatCount(payload.viewCount);
-    renderCaptionOptions(payload.captions);
-    transcriptButton.disabled = !selectedCaption;
-    showMessage(selectedCaption ? t("chooseCaption") : t("noCaptions"));
-    updateSelectedLanguage();
-    updateCaptionSource();
-  } catch (error) {
-    showError(formatInvokeError(error, t("listCaptionsFailed")));
-  } finally {
-    setCaptionLoading(false);
-  }
+urlInput.addEventListener("paste", () => {
+  requestAnimationFrame(() => {
+    const url = urlInput.value.trim();
+    if (!captionButton.disabled && isLikelyYoutubeUrl(url)) {
+      void checkCaptionCandidates(url);
+    }
+  });
 });
 
 captionList.addEventListener("change", (event) => {
@@ -1013,6 +1000,33 @@ function setTranscriptLoading(isLoading: boolean) {
   transcriptButton.disabled = isLoading || !selectedCaption;
   transcriptButton.textContent = isLoading ? t("fetchTranscriptLoading") : t("fetchTranscript");
   message.textContent = isLoading ? t("fetchingTranscript") : message.textContent;
+}
+
+async function checkCaptionCandidates(url: string) {
+  setCaptionLoading(true);
+  clearResult();
+
+  try {
+    const payload = await invoke<CaptionListSuccess>("list_captions", { url });
+
+    rememberRecentUrl(url);
+    latestCaptionList = payload;
+    selectedCaption = payload.captions[0] ?? null;
+    title.textContent = payload.title || t("transcriptTitle");
+    videoId.textContent = payload.videoId;
+    videoDuration.textContent = payload.duration || "-";
+    renderCanonicalUrl(payload.webpageUrl);
+    viewCount.textContent = formatCount(payload.viewCount);
+    renderCaptionOptions(payload.captions);
+    transcriptButton.disabled = !selectedCaption;
+    showMessage(selectedCaption ? t("chooseCaption") : t("noCaptions"));
+    updateSelectedLanguage();
+    updateCaptionSource();
+  } catch (error) {
+    showError(formatInvokeError(error, t("listCaptionsFailed")));
+  } finally {
+    setCaptionLoading(false);
+  }
 }
 
 function clearResult() {
@@ -2028,6 +2042,19 @@ function focusUrlInput() {
     urlInput.focus();
     urlInput.select();
   });
+}
+
+function clearUrlInputOnLaunch() {
+  urlInput.value = "";
+}
+
+function isLikelyYoutubeUrl(value: string) {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return host === "youtu.be" || host.endsWith(".youtu.be") || host === "youtube.com" || host.endsWith(".youtube.com");
+  } catch {
+    return false;
+  }
 }
 
 function escapeHtml(value: string) {
