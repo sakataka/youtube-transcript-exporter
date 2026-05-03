@@ -1,3 +1,4 @@
+mod codex_app_server;
 mod transcript;
 
 use std::process::Command;
@@ -32,6 +33,14 @@ fn open_youtube_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn ask_codex(prompt: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || codex_app_server::ask(&prompt))
+        .await
+        .map_err(|_| "Codexの実行タスクが中断されました。".to_string())?
+        .map_err(|error| error.message)
+}
+
 fn validate_youtube_url(value: &str) -> Result<(), String> {
     let url = Url::parse(value).map_err(|_| "YouTube URLとして解釈できません。".to_string())?;
     let host = url
@@ -59,7 +68,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_captions,
             fetch_transcript,
-            open_youtube_url
+            open_youtube_url,
+            ask_codex
         ])
         .run(tauri::generate_context!())
         .expect("failed to run app");
