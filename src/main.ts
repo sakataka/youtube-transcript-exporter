@@ -80,7 +80,10 @@ type AppSettings = {
   includeImagePrompt: boolean;
   formatAutomaticTranscript: boolean;
   transcriptDisplayMode: TranscriptDisplayMode;
-  recentUrls: string[];
+};
+
+type StoredAppSettings = Partial<AppSettings> & {
+  recentUrls?: unknown;
 };
 
 type TranscriptDisplayMode = "plain" | "timestamped";
@@ -430,13 +433,11 @@ app.innerHTML = `
           id="youtube-url"
           name="url"
           type="url"
-          list="recent-url-list"
           placeholder="https://www.youtube.com/watch?v=..."
           autocomplete="off"
           autofocus
           required
         />
-        <datalist id="recent-url-list"></datalist>
         <button id="caption-button" type="submit" data-i18n="captionButton">字幕を確認</button>
       </div>
       <p class="hint" data-i18n="hint">自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。</p>
@@ -614,7 +615,6 @@ app.innerHTML = `
 
 const form = document.querySelector<HTMLFormElement>("#caption-form")!;
 const urlInput = document.querySelector<HTMLInputElement>("#youtube-url")!;
-const recentUrlList = document.querySelector<HTMLDataListElement>("#recent-url-list")!;
 const captionButton = document.querySelector<HTMLButtonElement>("#caption-button")!;
 const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-button")!;
 const copyButton = document.querySelector<HTMLButtonElement>("#copy-button")!;
@@ -675,7 +675,6 @@ let elementToRestoreFocus: HTMLElement | null = null;
 clearUrlInputOnLaunch();
 renderPromptTemplates();
 renderAppOptions();
-renderRecentUrls();
 renderTranscriptDisplayMode();
 renderTranscriptSearch();
 applyUiLanguage();
@@ -1062,7 +1061,6 @@ async function checkCaptionCandidates(url: string) {
   try {
     const payload = await invoke<CaptionListSuccess>("list_captions", { url });
 
-    rememberRecentUrl(url);
     latestCaptionList = payload;
     selectedCaption = payload.captions[0] ?? null;
     title.textContent = payload.title || t("transcriptTitle");
@@ -1802,27 +1800,6 @@ function renderAppOptions() {
   renderTranscriptDisplayMode();
 }
 
-function renderRecentUrls() {
-  recentUrlList.innerHTML = appSettings.recentUrls
-    .map((url) => `<option value="${escapeHtml(url)}"></option>`)
-    .join("");
-}
-
-function rememberRecentUrl(url: string) {
-  const normalized = url.trim();
-
-  if (!normalized) {
-    return;
-  }
-
-  appSettings.recentUrls = [
-    normalized,
-    ...appSettings.recentUrls.filter((recentUrl) => recentUrl !== normalized)
-  ].slice(0, 5);
-  saveAppSettings();
-  renderRecentUrls();
-}
-
 function getSelectedPromptTemplate() {
   return (
     promptSettings.templates.find((template) => template.id === promptTemplateSelect.value) ??
@@ -1962,8 +1939,7 @@ function loadAppSettings(): AppSettings {
     uiLanguage: "ja",
     includeImagePrompt: true,
     formatAutomaticTranscript: true,
-    transcriptDisplayMode: "plain",
-    recentUrls: []
+    transcriptDisplayMode: "plain"
   };
 
   try {
@@ -1972,17 +1948,22 @@ function loadAppSettings(): AppSettings {
       return fallback;
     }
 
-    const parsed = JSON.parse(rawValue) as Partial<AppSettings>;
+    const parsed = JSON.parse(rawValue) as StoredAppSettings;
     const transcriptDisplayMode = isTranscriptDisplayMode(parsed.transcriptDisplayMode)
       ? parsed.transcriptDisplayMode
       : "plain";
-    return {
+    const settings: AppSettings = {
       uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja",
       includeImagePrompt: parsed.includeImagePrompt !== false,
       formatAutomaticTranscript: parsed.formatAutomaticTranscript !== false,
-      transcriptDisplayMode,
-      recentUrls: normalizeRecentUrls(parsed.recentUrls)
+      transcriptDisplayMode
     };
+
+    if ("recentUrls" in parsed) {
+      localStorage.setItem(appSettingsStorageKey, JSON.stringify(settings));
+    }
+
+    return settings;
   } catch {
     return fallback;
   }
@@ -1990,18 +1971,6 @@ function loadAppSettings(): AppSettings {
 
 function saveAppSettings() {
   localStorage.setItem(appSettingsStorageKey, JSON.stringify(appSettings));
-}
-
-function normalizeRecentUrls(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((url): url is string => typeof url === "string" && url.trim().length > 0)
-    .map((url) => url.trim())
-    .filter((url, index, urls) => urls.indexOf(url) === index)
-    .slice(0, 5);
 }
 
 function renderPromptSettingsEditor(templateId: string) {
