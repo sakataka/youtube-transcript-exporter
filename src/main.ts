@@ -1,127 +1,29 @@
 import "./style.css";
 import { invoke } from "@tauri-apps/api/core";
-
-type CaptionSource = "manual" | "automatic";
-
-type CaptionOption = {
-  language: string;
-  name: string;
-  source: CaptionSource;
-  isAutoCaption: boolean;
-};
-
-type CaptionListSuccess = {
-  videoId: string;
-  title: string;
-  channelName?: string;
-  description?: string;
-  thumbnailUrl?: string;
-  webpageUrl?: string;
-  viewCount?: number;
-  publishedDate?: string;
-  duration?: string;
-  chapters: VideoChapter[];
-  captions: CaptionOption[];
-};
-
-type TranscriptSuccess = {
-  videoId: string;
-  language: string;
-  source: CaptionSource;
-  title: string;
-  channelName?: string;
-  description?: string;
-  thumbnailUrl?: string;
-  webpageUrl?: string;
-  viewCount?: number;
-  publishedDate?: string;
-  duration?: string;
-  chapters: VideoChapter[];
-  text: string;
-  timedSegments: TimedTranscriptSegment[];
-};
-
-type TimedTranscriptSegment = {
-  startSeconds: number;
-  startLabel: string;
-  text: string;
-};
-
-type NormalizedTranscriptSegment = TimedTranscriptSegment;
-
-type VideoChapter = {
-  title: string;
-  startSeconds: number;
-  startLabel: string;
-};
-
-type ApiFailure = {
-  error: string;
-};
-
-type CodexJobStartSuccess = {
-  jobId: string;
-};
-
-type CodexJobStatus = {
-  status: "running" | "completed" | "failed" | "cancelled";
-  answer?: string;
-  error?: string;
-};
-
-type PromptTemplate = {
-  id: string;
-  label: string;
-  description: string;
-  instruction: string;
-};
-
-type PromptSettings = {
-  defaultTemplateId: string;
-  templates: PromptTemplate[];
-};
-
-type UiLanguage = "ja" | "en";
-
-type AppSettings = {
-  uiLanguage: UiLanguage;
-  includeImagePrompt: boolean;
-  formatAutomaticTranscript: boolean;
-  transcriptDisplayMode: TranscriptDisplayMode;
-};
-
-type StoredAppSettings = Partial<AppSettings> & {
-  recentUrls?: unknown;
-};
-
-type TranscriptDisplayMode = "plain" | "timestamped";
-type CodexQuestionKind = "initial" | "rerun" | "followup" | "selection" | "history";
-type CodexOutputMode = "transcript" | "copyPrompt" | "codexAnswer";
-
-type CodexHistoryEntry = {
-  id: string;
-  createdAt: string;
-  videoId: string;
-  title: string;
-  url: string;
-  language: string;
-  source: CaptionSource;
-  templateId: string;
-  questionKind: CodexQuestionKind;
-  questionText: string;
-  selectedExcerpt: string;
-  answerMarkdown: string;
-};
-
-type PendingCodexRequest = {
-  jobId: string;
-  token: number;
-  prompt: string;
-  questionKind: CodexQuestionKind;
-  questionText: string;
-  selectedExcerpt: string;
-  templateId: string;
-};
+import {
+  getSearchableSegments,
+  getTranscriptTextForDisplay as buildTranscriptTextForDisplay,
+  normalizeTranscriptSegment
+} from "./transcriptText";
+import type {
+  ApiFailure,
+  AppSettings,
+  CaptionListSuccess,
+  CaptionOption,
+  CaptionSource,
+  CodexHistoryEntry,
+  CodexJobStartSuccess,
+  CodexJobStatus,
+  CodexOutputMode,
+  CodexQuestionKind,
+  PendingCodexRequest,
+  PromptSettings,
+  PromptTemplate,
+  StoredAppSettings,
+  TimedTranscriptSegment,
+  TranscriptDisplayMode,
+  TranscriptSuccess
+} from "./types";
 
 const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1";
 const appSettingsStorageKey = "youtube-transcript-exporter.app-settings.v1";
@@ -2142,170 +2044,11 @@ function normalizeCodexHistoryEntry(value: unknown): CodexHistoryEntry | null {
 }
 
 function getTranscriptTextForDisplay(transcript: TranscriptSuccess) {
-  if (appSettings.transcriptDisplayMode === "timestamped") {
-    const timestampedText = buildTimestampedTranscriptText(transcript);
-
-    if (timestampedText) {
-      return timestampedText;
-    }
-  }
-
-  return getPlainTranscriptText(transcript);
+  return buildTranscriptTextForDisplay(transcript, appSettings);
 }
 
-function getPlainTranscriptText(transcript: TranscriptSuccess) {
-  if (transcript.source !== "automatic" || !appSettings.formatAutomaticTranscript) {
-    return transcript.text;
-  }
-
-  const formatted = formatAutomaticTranscriptText(transcript);
-  return formatted || transcript.text;
-}
-
-function buildTimestampedTranscriptText(transcript: TranscriptSuccess) {
-  const segments = getSearchableSegments(transcript);
-
-  if (segments.length === 0) {
-    return "";
-  }
-
-  return segments
-    .map((segment) => `${segment.startLabel} ${segment.text}`)
-    .join("\n");
-}
-
-function formatAutomaticTranscriptText(transcript: TranscriptSuccess) {
-  const segments = getDisplaySegments(transcript);
-
-  if (segments.length === 0) {
-    return transcript.text
-      .split(/\n+/)
-      .map(normalizeTranscriptSegment)
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  const joinedText = joinTranscriptParts(segments.map((segment) => segment.text));
-  const paragraphs = formatTranscriptParagraphs(joinedText);
-  return paragraphs.length > 0 ? paragraphs.join("\n\n") : joinedText;
-}
-
-function formatTranscriptParagraphs(text: string) {
-  const normalized = normalizeTranscriptSegment(text);
-
-  if (!normalized) {
-    return [];
-  }
-
-  const sentences = splitTranscriptSentences(normalized);
-  const targetParagraphLength = 650;
-  const maxParagraphLength = 950;
-  const paragraphs: string[] = [];
-  let current = "";
-
-  for (const sentence of sentences) {
-    const normalizedSentence = normalizeTranscriptSegment(sentence);
-
-    if (!normalizedSentence) {
-      continue;
-    }
-
-    const next = current ? joinTranscriptParts([current, normalizedSentence]) : normalizedSentence;
-
-    if (current && next.length > maxParagraphLength) {
-      paragraphs.push(current);
-      current = normalizedSentence;
-    } else {
-      current = next;
-    }
-
-    if (current.length >= targetParagraphLength && endsSentence(normalizedSentence)) {
-      paragraphs.push(current);
-      current = "";
-    }
-  }
-
-  if (current) {
-    paragraphs.push(current);
-  }
-
-  return paragraphs;
-}
-
-function normalizeTranscriptSegment(text: string) {
-  return removeUnnaturalJapaneseSpaces(text.replace(/\s+/g, " ").trim());
-}
-
-function removeUnnaturalJapaneseSpaces(text: string) {
-  return text
-    .replace(
-      /([\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}])\s+([\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}、。！？])/gu,
-      "$1$2"
-    )
-    .replace(
-      /([、。！？])\s+([\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}])/gu,
-      "$1$2"
-    );
-}
-
-function splitTranscriptSentences(text: string) {
-  const sentences: string[] = [];
-  let current = "";
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index] ?? "";
-    current += character;
-
-    if (isSentenceBoundary(text, index)) {
-      const sentence = normalizeTranscriptSegment(current);
-      if (sentence) {
-        sentences.push(sentence);
-      }
-      current = "";
-    }
-  }
-
-  const rest = normalizeTranscriptSegment(current);
-  if (rest) {
-    sentences.push(rest);
-  }
-
-  return sentences.length > 0 ? sentences : [text];
-}
-
-function isSentenceBoundary(text: string, index: number) {
-  const character = text[index] ?? "";
-
-  if (/[。！？!?]/.test(character)) {
-    return true;
-  }
-
-  if (character !== ".") {
-    return false;
-  }
-
-  const previous = text[index - 1] ?? "";
-  const next = text[index + 1] ?? "";
-  return !/\d/.test(previous) && (!next || /\s/.test(next));
-}
-
-function joinTranscriptParts(parts: string[]) {
-  return parts.reduce((joined, part) => {
-    if (!joined) {
-      return part;
-    }
-
-    return shouldJoinWithoutSpace(joined, part) ? `${joined}${part}` : `${joined} ${part}`;
-  }, "");
-}
-
-function shouldJoinWithoutSpace(left: string, right: string) {
-  return /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]$/u.test(left) ||
-    /^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}、。！？]/u.test(right);
-}
-
-function endsSentence(text: string) {
-  return /[。！？.!?]$/.test(text);
+function getSearchableTranscriptSegments(transcript: TranscriptSuccess) {
+  return getSearchableSegments(transcript, appSettings);
 }
 
 function updateTranscriptCharacterCount() {
@@ -2319,7 +2062,7 @@ function updateTranscriptStats() {
     return;
   }
 
-  const segmentTotal = getSearchableSegments(latestTranscript).length;
+  const segmentTotal = getSearchableTranscriptSegments(latestTranscript).length;
   segmentCount.textContent = segmentTotal.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
 }
 
@@ -2334,7 +2077,7 @@ function isTranscriptDisplayMode(value: unknown): value is TranscriptDisplayMode
 }
 
 function renderTranscriptSearch() {
-  const segments = latestTranscript ? getSearchableSegments(latestTranscript) : [];
+  const segments = latestTranscript ? getSearchableTranscriptSegments(latestTranscript) : [];
   transcriptSearchPanel.hidden = !latestTranscript;
   transcriptSearchInput.disabled = segments.length === 0;
 
@@ -2377,90 +2120,6 @@ function renderTranscriptSearch() {
       `
     )
     .join("");
-}
-
-function getSearchableSegments(transcript: TranscriptSuccess) {
-  return getDisplaySegments(transcript);
-}
-
-function getDisplaySegments(transcript: TranscriptSuccess) {
-  const segments = (transcript.timedSegments ?? [])
-    .map((segment) => ({
-      ...segment,
-      text: normalizeTranscriptSegment(segment.text)
-    }))
-    .filter((segment) => segment.text.length > 0);
-
-  if (transcript.source !== "automatic" || !appSettings.formatAutomaticTranscript) {
-    return segments;
-  }
-
-  return removeRollingCaptionOverlaps(segments);
-}
-
-function removeRollingCaptionOverlaps(segments: NormalizedTranscriptSegment[]) {
-  const cleaned: NormalizedTranscriptSegment[] = [];
-
-  for (const segment of segments) {
-    const text = normalizeTranscriptSegment(segment.text);
-
-    if (!text) {
-      continue;
-    }
-
-    if (cleaned.length === 0) {
-      cleaned.push({ ...segment, text });
-      continue;
-    }
-
-    const previous = cleaned[cleaned.length - 1];
-    const previousText = previous.text;
-    const normalizedPrevious = normalizeForOverlap(previousText);
-    const normalizedCurrent = normalizeForOverlap(text);
-
-    if (!normalizedCurrent || normalizedCurrent === normalizedPrevious) {
-      continue;
-    }
-
-    if (normalizedCurrent.startsWith(normalizedPrevious)) {
-      cleaned[cleaned.length - 1] = { ...segment, text };
-      continue;
-    }
-
-    if (normalizedPrevious.includes(normalizedCurrent)) {
-      continue;
-    }
-
-    const overlapLength = findRollingOverlapLength(previousText, text);
-    const nextText = overlapLength > 0 ? normalizeTranscriptSegment(text.slice(overlapLength)) : text;
-
-    if (!nextText) {
-      continue;
-    }
-
-    cleaned.push({ ...segment, text: nextText });
-  }
-
-  return cleaned;
-}
-
-function normalizeForOverlap(text: string) {
-  return normalizeTranscriptSegment(text).toLocaleLowerCase();
-}
-
-function findRollingOverlapLength(previousText: string, currentText: string) {
-  const previous = normalizeForOverlap(previousText);
-  const current = normalizeForOverlap(currentText);
-  const minimumOverlapLength = 1;
-  const maximumOverlapLength = Math.min(previous.length, current.length);
-
-  for (let length = maximumOverlapLength; length >= minimumOverlapLength; length -= 1) {
-    if (previous.slice(-length) === current.slice(0, length)) {
-      return length;
-    }
-  }
-
-  return 0;
 }
 
 function normalizeSearchText(value: string) {

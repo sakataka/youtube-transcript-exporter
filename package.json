@@ -11,6 +11,7 @@
     "package": "tauri build --bundles app",
     "install:app": "bun run scripts/install-app.ts",
     "package:install": "bun run package && bun run install:app",
+    "test:frontend": "bun test src/*.test.ts",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "typecheck": "tsc --noEmit"
   },
