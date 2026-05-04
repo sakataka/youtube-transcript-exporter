@@ -60,6 +60,13 @@ struct FrontendDebugLogEntry {
     details: Value,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DebugLogReadResult {
+    path: String,
+    content: String,
+}
+
 #[tauri::command]
 async fn list_captions(url: String) -> Result<CaptionListResult, String> {
     let started_at = Instant::now();
@@ -260,14 +267,18 @@ fn get_debug_log_path() -> Result<String, String> {
 }
 
 #[tauri::command]
+fn read_debug_log() -> Result<DebugLogReadResult, String> {
+    let path = debug_log::ensure_debug_log_file()?;
+    let content = std::fs::read_to_string(&path).map_err(|error| format!("ログファイルを読み取れませんでした: {error}"))?;
+    Ok(DebugLogReadResult {
+        path: path.to_string_lossy().to_string(),
+        content,
+    })
+}
+
+#[tauri::command]
 fn open_debug_log() -> Result<(), String> {
-    let path = debug_log::debug_log_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| format!("ログディレクトリを作成できませんでした: {error}"))?;
-    }
-    if !path.exists() {
-        std::fs::write(&path, "").map_err(|error| format!("ログファイルを作成できませんでした: {error}"))?;
-    }
+    let path = debug_log::ensure_debug_log_file()?;
     Command::new("open")
         .arg(&path)
         .spawn()
@@ -365,6 +376,7 @@ pub fn run() {
             cancel_codex_request,
             append_debug_log,
             get_debug_log_path,
+            read_debug_log,
             open_debug_log
         ])
         .run(tauri::generate_context!())

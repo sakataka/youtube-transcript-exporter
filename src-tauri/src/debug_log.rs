@@ -41,6 +41,17 @@ pub fn debug_log_path() -> Result<PathBuf, String> {
         .join("debug.log"))
 }
 
+pub fn ensure_debug_log_file() -> Result<PathBuf, String> {
+    let path = debug_log_path()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| format!("ログディレクトリを作成できませんでした: {error}"))?;
+    }
+    if !path.exists() {
+        fs::write(&path, "").map_err(|error| format!("ログファイルを作成できませんでした: {error}"))?;
+    }
+    Ok(path)
+}
+
 pub fn truncate_for_log(value: &str, max_chars: usize) -> String {
     let mut result = String::new();
     for character in value.chars().take(max_chars) {

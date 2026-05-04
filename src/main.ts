@@ -26,6 +26,11 @@ import type {
   TranscriptSuccess
 } from "./types";
 
+type DebugLogReadResult = {
+  path: string;
+  content: string;
+};
+
 const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1";
 const appSettingsStorageKey = "youtube-transcript-exporter.app-settings.v1";
 const codexHistoryStorageKey = "youtube-ai-brief.codex-history.v1";
@@ -328,10 +333,13 @@ const uiText = {
     markdownThemeCssDescription: "AI回答タブのMarkdown表示だけに適用するCSSです。`.markdown-output` から始まるセレクタで見出し、色、フォント、背景を調整できます。",
     resetMarkdownTheme: "初期CSSに戻す",
     debugLog: "デバッグログ",
-    debugLogDescription: "取得時間、生成AIへの依頼内容、応答タイミング、表示処理のタイミングをローカルログへ記録します。通常は見る必要はありません。",
-    openDebugLog: "ログを開く",
-    debugLogOpened: "デバッグログを開きました。",
-    debugLogOpenFailed: "デバッグログを開けませんでした。",
+    debugLogDescription: "取得時間、生成AIへの依頼内容、応答タイミング、表示処理のタイミングをローカルログへ記録します。外部アプリを開かず、この画面で確認できます。",
+    showDebugLog: "ログを表示",
+    refreshDebugLog: "ログを更新",
+    debugLogLoaded: "デバッグログを表示しました。",
+    debugLogLoadFailed: "デバッグログを読み込めませんでした。",
+    debugLogEmpty: "ログはまだありません。",
+    debugLogPath: "保存先",
     japanese: "日本語",
     english: "English",
     urlRequired: "YouTube URLを入力してください。",
@@ -453,10 +461,13 @@ const uiText = {
     markdownThemeCssDescription: "CSS applied only to the AI answer Markdown view. Use selectors starting with `.markdown-output` to adjust headings, colors, fonts, and backgrounds.",
     resetMarkdownTheme: "Reset CSS",
     debugLog: "Debug log",
-    debugLogDescription: "Writes local timing logs for caption fetching, AI prompts, response timing, and rendering. You usually do not need to open this.",
-    openDebugLog: "Open log",
-    debugLogOpened: "Debug log opened.",
-    debugLogOpenFailed: "Could not open the debug log.",
+    debugLogDescription: "Writes local timing logs for caption fetching, AI prompts, response timing, and rendering. You can read it here without opening another app.",
+    showDebugLog: "Show log",
+    refreshDebugLog: "Refresh log",
+    debugLogLoaded: "Debug log loaded.",
+    debugLogLoadFailed: "Could not read the debug log.",
+    debugLogEmpty: "No log entries yet.",
+    debugLogPath: "Path",
     japanese: "Japanese",
     english: "English",
     urlRequired: "Enter a YouTube URL.",
@@ -722,7 +733,12 @@ app.innerHTML = `
               <div class="debug-log-settings">
                 <span class="label" data-i18n="debugLog">デバッグログ</span>
                 <p class="hint" data-i18n="debugLogDescription">取得時間、生成AIへの依頼内容、応答タイミング、表示処理のタイミングをローカルログへ記録します。通常は見る必要はありません。</p>
-                <button class="secondary-button" id="settings-open-debug-log" type="button" data-i18n="openDebugLog">ログを開く</button>
+                <button class="secondary-button" id="settings-open-debug-log" type="button" data-i18n="showDebugLog">ログを表示</button>
+                <div class="debug-log-viewer" id="settings-debug-log-viewer" hidden>
+                  <span class="debug-log-path-label" data-i18n="debugLogPath">保存先</span>
+                  <code id="settings-debug-log-path"></code>
+                  <textarea id="settings-debug-log-content" class="debug-log-content" spellcheck="false" readonly></textarea>
+                </div>
               </div>
 
               <div class="settings-footer">
@@ -789,6 +805,9 @@ const settingsCompletionSound = document.querySelector<HTMLInputElement>("#setti
 const settingsMarkdownThemeCss = document.querySelector<HTMLTextAreaElement>("#settings-markdown-theme-css")!;
 const settingsResetMarkdownTheme = document.querySelector<HTMLButtonElement>("#settings-reset-markdown-theme")!;
 const settingsOpenDebugLog = document.querySelector<HTMLButtonElement>("#settings-open-debug-log")!;
+const settingsDebugLogViewer = document.querySelector<HTMLDivElement>("#settings-debug-log-viewer")!;
+const settingsDebugLogPath = document.querySelector<HTMLElement>("#settings-debug-log-path")!;
+const settingsDebugLogContent = document.querySelector<HTMLTextAreaElement>("#settings-debug-log-content")!;
 const settingsSaveDisplay = document.querySelector<HTMLButtonElement>("#settings-save-display")!;
 const captionPanel = document.querySelector<HTMLElement>("#caption-panel")!;
 const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
@@ -1283,12 +1302,20 @@ settingsResetMarkdownTheme.addEventListener("click", () => {
 
 settingsOpenDebugLog.addEventListener("click", async () => {
   try {
-    await invoke("open_debug_log");
-    showMessage(t("debugLogOpened"));
+    await loadDebugLogIntoSettings();
+    showMessage(t("debugLogLoaded"));
   } catch (error) {
-    showMessage(formatInvokeError(error, t("debugLogOpenFailed")), true);
+    showMessage(formatInvokeError(error, t("debugLogLoadFailed")), true);
   }
 });
+
+async function loadDebugLogIntoSettings() {
+  const log = await invoke<DebugLogReadResult>("read_debug_log");
+  settingsDebugLogPath.textContent = log.path;
+  settingsDebugLogContent.value = log.content.trim() || t("debugLogEmpty");
+  settingsDebugLogViewer.hidden = false;
+  settingsOpenDebugLog.textContent = t("refreshDebugLog");
+}
 
 function renderCaptionOptions(captions: CaptionOption[]) {
   const selectedIndex = selectedCaption
@@ -1764,7 +1791,7 @@ function renderMarkdown(markdown: string) {
       continue;
     }
 
-    const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+    const unordered = trimmed.match(/^(?:[-*]\s+|・\s*)(.+)$/);
     if (unordered) {
       flushParagraph();
       flushBlockquote();
@@ -1832,6 +1859,10 @@ function normalizeMarkdownForDisplay(markdown: string) {
 }
 
 function renderParagraphBlocks(text: string) {
+  if (isSourceNoteLine(text)) {
+    return [`<p class="source-note">${renderInlineMarkdown(text)}</p>`];
+  }
+
   const numberedSection = text.match(/^(.*?)\s+\d+[.)]\s+(?:\*\*|__)(.+?)(?:\*\*|__)\s*(.*)$/);
 
   if (!numberedSection) {
@@ -1854,6 +1885,10 @@ function renderParagraphBlocks(text: string) {
   }
 
   return blocks;
+}
+
+function isSourceNoteLine(text: string) {
+  return /^(出典|Source)\s*[:：]/i.test(text.trim());
 }
 
 function parseNumberedSectionTitle(text: string) {
@@ -1943,8 +1978,8 @@ function linkTimestampLabels(text: string) {
   }
 
   return text
-    .replace(/(^|[\s([（])(\d{1,2}:\d{2}(?::\d{2})?)(?=([\])）.,。、\s]|[~〜～\-–—]|から|$))/g, replaceTimestampMatch)
-    .replace(/(^|[\s([（])(\d{1,3})分(?:(\d{1,2})秒)?(?=([\])）.,。、\s]|[~〜～\-–—]|から|$))/g, replaceJapaneseTimestampMatch);
+    .replace(/(^|[\s([（、,，;；/／])(\d{1,2}:\d{2}(?::\d{2})?)(?=([\])）.,。、，;；\s]|[~〜～\-–—]|から|$))/g, replaceTimestampMatch)
+    .replace(/(^|[\s([（、,，;；/／])(\d{1,3})分(?:(\d{1,2})秒)?(?=([\])）.,。、，;；\s]|[~〜～\-–—]|から|$))/g, replaceJapaneseTimestampMatch);
 }
 
 function replaceTimestampMatch(_match: string, prefix: string, label: string) {
@@ -2921,6 +2956,12 @@ function applyUiLanguage() {
     }
     element.placeholder = t(key as keyof (typeof uiText)["ja"]);
   });
+  if (!settingsDebugLogViewer.hidden) {
+    settingsOpenDebugLog.textContent = t("refreshDebugLog");
+    if (!settingsDebugLogContent.value.trim() || settingsDebugLogContent.value === uiText.ja.debugLogEmpty || settingsDebugLogContent.value === uiText.en.debugLogEmpty) {
+      settingsDebugLogContent.value = t("debugLogEmpty");
+    }
+  }
   updatePromptDescription();
   updateSelectedLanguage();
   updateCaptionSource();

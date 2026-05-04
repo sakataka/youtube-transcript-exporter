@@ -671,6 +671,10 @@ textarea[hidden] {
   margin: 0 0 1em;
 }
 
+.markdown-output p.source-note {
+  margin-left: 1.95em;
+}
+
 .markdown-output strong {
   color: #111827;
   font-weight: 800;
@@ -987,6 +991,46 @@ textarea[hidden] {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.88rem;
   line-height: 1.55;
+}
+
+.debug-log-settings {
+  display: grid;
+  gap: 10px;
+}
+
+.debug-log-settings .hint {
+  margin-top: 0;
+}
+
+.debug-log-viewer {
+  display: grid;
+  gap: 6px;
+}
+
+.debug-log-viewer[hidden] {
+  display: none;
+}
+
+.debug-log-path-label {
+  color: #5d6a76;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+#settings-debug-log-path {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.debug-log-content {
+  min-height: 220px;
+  height: 220px;
+  border: 1px solid #cbd3da;
+  border-radius: 6px;
+  background: #fbfcfd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 .default-template-toggle {
