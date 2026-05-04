@@ -323,6 +323,7 @@ const uiText = {
     save: "保存",
     uiLanguage: "UI言語",
     uiLanguageDescription: "アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。",
+    completionSound: "字幕取得とAI回答の完了時に音を鳴らす",
     markdownThemeCss: "Markdown表示CSS",
     markdownThemeCssDescription: "AI回答タブのMarkdown表示だけに適用するCSSです。`.markdown-output` から始まるセレクタで見出し、色、フォント、背景を調整できます。",
     resetMarkdownTheme: "初期CSSに戻す",
@@ -447,6 +448,7 @@ const uiText = {
     save: "Save",
     uiLanguage: "UI language",
     uiLanguageDescription: "Changes the app display language. Copied prompt text still uses each template exactly as written.",
+    completionSound: "Play a sound when caption fetch or AI answer completes",
     markdownThemeCss: "Markdown display CSS",
     markdownThemeCssDescription: "CSS applied only to the AI answer Markdown view. Use selectors starting with `.markdown-output` to adjust headings, colors, fonts, and backgrounds.",
     resetMarkdownTheme: "Reset CSS",
@@ -708,6 +710,11 @@ app.innerHTML = `
               </select>
               <p class="hint" data-i18n="uiLanguageDescription">アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。</p>
 
+              <label class="default-template-toggle">
+                <input id="settings-completion-sound" type="checkbox" />
+                <span data-i18n="completionSound">字幕取得とAI回答の完了時に音を鳴らす</span>
+              </label>
+
               <label class="label" for="settings-markdown-theme-css" data-i18n="markdownThemeCss">Markdown表示CSS</label>
               <textarea id="settings-markdown-theme-css" class="settings-markdown-theme-css" spellcheck="false"></textarea>
               <p class="hint" data-i18n="markdownThemeCssDescription">AI回答タブのMarkdown表示だけに適用するCSSです。\`.markdown-output\` から始まるセレクタで見出し、色、フォント、背景を調整できます。</p>
@@ -778,6 +785,7 @@ const outputTabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".out
 const settingsPromptsSection = document.querySelector<HTMLElement>("#settings-prompts-section")!;
 const settingsDisplaySection = document.querySelector<HTMLElement>("#settings-display-section")!;
 const settingsUiLanguage = document.querySelector<HTMLSelectElement>("#settings-ui-language")!;
+const settingsCompletionSound = document.querySelector<HTMLInputElement>("#settings-completion-sound")!;
 const settingsMarkdownThemeCss = document.querySelector<HTMLTextAreaElement>("#settings-markdown-theme-css")!;
 const settingsResetMarkdownTheme = document.querySelector<HTMLButtonElement>("#settings-reset-markdown-theme")!;
 const settingsOpenDebugLog = document.querySelector<HTMLButtonElement>("#settings-open-debug-log")!;
@@ -841,6 +849,7 @@ let codexHistory = loadCodexHistory();
 let outputMode: CodexOutputMode = "transcript";
 let isTranscriptSearchExpanded = false;
 let latestSelectedOutputText = "";
+let completionAudioContext: AudioContext | null = null;
 let elementToRestoreFocus: HTMLElement | null = null;
 let followUpContext: { kind: CodexQuestionKind; selectedExcerpt: string } | null = null;
 
@@ -1255,6 +1264,7 @@ settingsSaveTemplate.addEventListener("click", () => {
 
 settingsSaveDisplay.addEventListener("click", () => {
   appSettings.uiLanguage = settingsUiLanguage.value === "en" ? "en" : "ja";
+  appSettings.completionSoundEnabled = settingsCompletionSound.checked;
   appSettings.markdownThemeCss = settingsMarkdownThemeCss.value;
   saveAppSettings();
   applyMarkdownTheme();
@@ -1363,6 +1373,7 @@ async function fetchSelectedTranscript(options: { copyAfterFetch: boolean }) {
     }
 
     applyTranscriptPayload(payload, requestedCaption);
+    playCompletionSound();
     appendDebugLog("frontend.fetch_transcript.applied", {
       elapsedMs: Math.round(performance.now() - startedAt),
       textChars: payload.text.length,
@@ -2100,6 +2111,7 @@ function handleCodexJobStatus(status: CodexJobStatus, token: number) {
     saveCodexHistoryEntry(completedRequest, status.answer);
     renderOutput();
     showMessage(t("codexAnswerReady"));
+    playCompletionSound();
     return;
   }
 
@@ -2820,6 +2832,7 @@ function updatePromptDescription() {
 function renderAppOptions() {
   includeImagePrompt.checked = appSettings.includeImagePrompt;
   formatAutomaticTranscript.checked = appSettings.formatAutomaticTranscript;
+  settingsCompletionSound.checked = appSettings.completionSoundEnabled;
   settingsMarkdownThemeCss.value = appSettings.markdownThemeCss;
   renderTranscriptDisplayMode();
 }
@@ -2843,6 +2856,7 @@ function openPromptSettings() {
   elementToRestoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   showSettingsSection(activeSettingsSection);
   settingsUiLanguage.value = appSettings.uiLanguage;
+  settingsCompletionSound.checked = appSettings.completionSoundEnabled;
   settingsMarkdownThemeCss.value = appSettings.markdownThemeCss;
   renderPromptSettingsList(promptTemplateSelect.value || promptSettings.defaultTemplateId);
   renderPromptSettingsEditor(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
@@ -2932,6 +2946,46 @@ function applyMarkdownTheme() {
   markdownThemeStyle.textContent = appSettings.markdownThemeCss || defaultMarkdownThemeCss;
 }
 
+function playCompletionSound() {
+  if (!appSettings.completionSoundEnabled) {
+    return;
+  }
+
+  const AudioContextConstructor =
+    window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextConstructor) {
+    return;
+  }
+
+  const audioContext = completionAudioContext ?? new AudioContextConstructor();
+  completionAudioContext = audioContext;
+  const play = () => {
+    const now = audioContext.currentTime;
+    playCompletionTone(audioContext, now, 660, 0.055);
+    playCompletionTone(audioContext, now + 0.075, 880, 0.075);
+  };
+
+  if (audioContext.state === "suspended") {
+    void audioContext.resume().then(play).catch(() => {});
+  } else {
+    play();
+  }
+}
+
+function playCompletionTone(audioContext: AudioContext, startAt: number, frequency: number, duration: number) {
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(frequency, startAt);
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.045, startAt + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start(startAt);
+  oscillator.stop(startAt + duration + 0.01);
+}
+
 function trapSettingsFocus(event: KeyboardEvent) {
   const focusable = Array.from(
     promptSettingsModal.querySelectorAll<HTMLElement>(
@@ -2970,7 +3024,8 @@ function loadAppSettings(): AppSettings {
     includeImagePrompt: true,
     formatAutomaticTranscript: true,
     transcriptDisplayMode: "plain",
-    markdownThemeCss: defaultMarkdownThemeCss
+    markdownThemeCss: defaultMarkdownThemeCss,
+    completionSoundEnabled: true
   };
 
   try {
@@ -2991,7 +3046,8 @@ function loadAppSettings(): AppSettings {
       markdownThemeCss:
         typeof parsed.markdownThemeCss === "string" && parsed.markdownThemeCss.trim()
           ? parsed.markdownThemeCss
-          : defaultMarkdownThemeCss
+          : defaultMarkdownThemeCss,
+      completionSoundEnabled: parsed.completionSoundEnabled !== false
     };
 
     if ("recentUrls" in parsed) {

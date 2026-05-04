@@ -85,6 +85,7 @@ export type AppSettings = {
   formatAutomaticTranscript: boolean;
   transcriptDisplayMode: TranscriptDisplayMode;
   markdownThemeCss: string;
+  completionSoundEnabled: boolean;
 };
 
 export type StoredAppSettings = Partial<AppSettings> & {

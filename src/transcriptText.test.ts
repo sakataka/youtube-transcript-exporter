@@ -12,7 +12,8 @@ const baseSettings: AppSettings = {
   includeImagePrompt: true,
   formatAutomaticTranscript: true,
   transcriptDisplayMode: "plain",
-  markdownThemeCss: ""
+  markdownThemeCss: "",
+  completionSoundEnabled: true
 };
 
 function transcript(partial: Partial<TranscriptSuccess>): TranscriptSuccess {
