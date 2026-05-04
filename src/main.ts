@@ -323,7 +323,7 @@ const uiText = {
     save: "保存",
     uiLanguage: "UI言語",
     uiLanguageDescription: "アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。",
-    completionSound: "字幕取得とAI回答の完了時に音を鳴らす",
+    completionSound: "AI回答の完了時に音を鳴らす",
     markdownThemeCss: "Markdown表示CSS",
     markdownThemeCssDescription: "AI回答タブのMarkdown表示だけに適用するCSSです。`.markdown-output` から始まるセレクタで見出し、色、フォント、背景を調整できます。",
     resetMarkdownTheme: "初期CSSに戻す",
@@ -448,7 +448,7 @@ const uiText = {
     save: "Save",
     uiLanguage: "UI language",
     uiLanguageDescription: "Changes the app display language. Copied prompt text still uses each template exactly as written.",
-    completionSound: "Play a sound when caption fetch or AI answer completes",
+    completionSound: "Play a sound when the AI answer completes",
     markdownThemeCss: "Markdown display CSS",
     markdownThemeCssDescription: "CSS applied only to the AI answer Markdown view. Use selectors starting with `.markdown-output` to adjust headings, colors, fonts, and backgrounds.",
     resetMarkdownTheme: "Reset CSS",
@@ -712,7 +712,7 @@ app.innerHTML = `
 
               <label class="default-template-toggle">
                 <input id="settings-completion-sound" type="checkbox" />
-                <span data-i18n="completionSound">字幕取得とAI回答の完了時に音を鳴らす</span>
+                <span data-i18n="completionSound">AI回答の完了時に音を鳴らす</span>
               </label>
 
               <label class="label" for="settings-markdown-theme-css" data-i18n="markdownThemeCss">Markdown表示CSS</label>
@@ -1373,7 +1373,6 @@ async function fetchSelectedTranscript(options: { copyAfterFetch: boolean }) {
     }
 
     applyTranscriptPayload(payload, requestedCaption);
-    playCompletionSound();
     appendDebugLog("frontend.fetch_transcript.applied", {
       elapsedMs: Math.round(performance.now() - startedAt),
       textChars: payload.text.length,
