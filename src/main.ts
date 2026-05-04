@@ -793,7 +793,9 @@ askCodexButton.addEventListener("click", async () => {
     return;
   }
 
-  const prompt = buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate());
+  const prompt = buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate(), {
+    includeImageInstruction: false
+  });
   latestCodexAnswer = t("askingCodex");
   setOutputMode("codexAnswer");
   setCodexLoading(true);
@@ -1256,7 +1258,7 @@ function renderOutput() {
 }
 
 function renderMarkdown(markdown: string) {
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const lines = normalizeMarkdownForDisplay(markdown).split("\n");
   const blocks: string[] = [];
   let paragraph: string[] = [];
   let listItems: string[] = [];
@@ -1353,7 +1355,16 @@ function renderMarkdown(markdown: string) {
       flushParagraph();
       flushBlockquote();
       listItems = [];
-      orderedListItems.push(ordered[1]);
+      const section = parseNumberedSectionTitle(ordered[1]);
+      if (section) {
+        flushList();
+        blocks.push(`<h2>${renderInlineMarkdown(section.title)}</h2>`);
+        if (section.rest) {
+          blocks.push(`<p>${renderInlineMarkdown(section.rest)}</p>`);
+        }
+      } else {
+        orderedListItems.push(ordered[1]);
+      }
       continue;
     }
 
@@ -1376,6 +1387,26 @@ function renderMarkdown(markdown: string) {
   flushOpenBlocks();
 
   return blocks.join("");
+}
+
+function normalizeMarkdownForDisplay(markdown: string) {
+  return markdown
+    .replace(/\r\n?/g, "\n")
+    .replace(/([^\n])\s+(\d+[.)]\s+(?:\*\*|__)[^\n]+?(?:\*\*|__))/g, "$1\n\n$2");
+}
+
+function parseNumberedSectionTitle(text: string) {
+  const boldOnly = text.match(/^(?:\*\*|__)(.+?)(?:\*\*|__)\s*$/);
+  if (boldOnly) {
+    return { title: boldOnly[1], rest: "" };
+  }
+
+  const boldWithRest = text.match(/^(?:\*\*|__)(.+?)(?:\*\*|__)\s*[:：-]?\s+(.+)$/);
+  if (boldWithRest) {
+    return { title: boldWithRest[1], rest: boldWithRest[2] };
+  }
+
+  return null;
 }
 
 function renderInlineMarkdown(text: string) {
@@ -1771,7 +1802,12 @@ async function openTimestampUrl(url: string | undefined) {
   }
 }
 
-function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemplate) {
+function buildAnalysisPrompt(
+  transcript: TranscriptSuccess,
+  template: PromptTemplate,
+  options: { includeImageInstruction?: boolean } = {}
+) {
+  const includeImageInstruction = options.includeImageInstruction ?? appSettings.includeImagePrompt;
   const transcriptText = getTranscriptTextForDisplay(transcript);
   const promptCreatedDate = new Date().toLocaleDateString("ja-JP", {
     year: "numeric",
@@ -1808,11 +1844,13 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
       : [];
 
   return [
-    "以下のYouTube動画字幕をもとに、必ず次の2つを順番に行ってください。",
-    "1. まず、文章で動画の内容を説明・整理してください。",
-    "2. その後、説明とは別に、動画内容を1枚にまとめた画像を生成してください。",
+    includeImageInstruction
+      ? "以下のYouTube動画字幕をもとに、必ず次の2つを順番に行ってください。"
+      : "以下のYouTube動画字幕をもとに、文章で動画の内容を説明・整理してください。",
+    includeImageInstruction ? "1. まず、文章で動画の内容を説明・整理してください。" : null,
+    includeImageInstruction ? "2. その後、説明とは別に、動画内容を1枚にまとめた画像を生成してください。" : null,
     "",
-    "最初から画像だけを生成せず、必ず文章での説明を先に出力してください。",
+    includeImageInstruction ? "最初から画像だけを生成せず、必ず文章での説明を先に出力してください。" : null,
     "",
     "文章での説明指示:",
     template.instruction,
@@ -1839,7 +1877,7 @@ function buildAnalysisPrompt(transcript: TranscriptSuccess, template: PromptTemp
     "",
     appSettings.transcriptDisplayMode === "timestamped" ? null : buildTimedReference(transcript),
     "",
-    appSettings.includeImagePrompt ? buildImageGenerationInstruction(template) : null
+    includeImageInstruction ? buildImageGenerationInstruction(template) : null
   ]
     .filter((line) => line !== null)
     .join("\n");

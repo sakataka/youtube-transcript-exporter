@@ -283,10 +283,7 @@ fn extract_image_generation_markdown(message: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .unwrap_or_default();
     if status != "completed" {
-        return Some(format!(
-            "> 画像生成は完了しませんでした。status: {}",
-            status
-        ));
+        return None;
     }
 
     if let Some(result) = item.get("result").and_then(Value::as_str) {
@@ -311,10 +308,7 @@ fn extract_raw_image_generation_markdown(message: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .unwrap_or_default();
     if status != "completed" {
-        return Some(format!(
-            "> 画像生成は完了しませんでした。status: {}",
-            status
-        ));
+        return None;
     }
 
     item.get("result")

@@ -648,11 +648,20 @@ textarea[hidden] {
   display: grid;
   gap: 0.35em;
   margin: 0 0 1.1em;
-  padding-left: 1.35em;
+  padding-left: 1.65em;
+}
+
+.markdown-output ol {
+  list-style-position: outside;
 }
 
 .markdown-output li {
-  padding-left: 0.15em;
+  padding-left: 0.3em;
+}
+
+.markdown-output li::marker {
+  color: #31506e;
+  font-weight: 800;
 }
 
 .markdown-output blockquote {
