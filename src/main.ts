@@ -817,6 +817,7 @@ let codexPollTimer: number | undefined;
 let codexHistory = loadCodexHistory();
 let outputMode: CodexOutputMode = "transcript";
 let isTranscriptSearchExpanded = false;
+let latestSelectedOutputText = "";
 let elementToRestoreFocus: HTMLElement | null = null;
 let followUpContext: { kind: CodexQuestionKind; selectedExcerpt: string } | null = null;
 
@@ -1037,6 +1038,18 @@ transcriptSearchInput.addEventListener("input", () => {
   renderTranscriptSearch();
 });
 
+output.addEventListener("select", () => {
+  cacheSelectedOutputText();
+});
+
+codexAnswerOutput.addEventListener("mouseup", () => {
+  cacheSelectedOutputText();
+});
+
+codexAnswerOutput.addEventListener("keyup", () => {
+  cacheSelectedOutputText();
+});
+
 transcriptSearchToggle.addEventListener("click", () => {
   if (!latestTranscript) {
     return;
@@ -1194,6 +1207,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Tab") {
     trapSettingsFocus(event);
   }
+});
+
+document.addEventListener("selectionchange", () => {
+  cacheSelectedOutputText();
 });
 
 settingsTemplateSelect.addEventListener("change", () => {
@@ -1402,6 +1419,7 @@ function clearTranscript() {
   transcriptButton.textContent = t("fetchTranscript");
   isTranscriptSearchExpanded = false;
   transcriptSearchInput.value = "";
+  latestSelectedOutputText = "";
   renderTranscriptSearch();
   renderCodexControls();
   renderOutput();
@@ -1818,15 +1836,38 @@ function linkTimestampLabels(text: string) {
     return text;
   }
 
-  return text.replace(/(^|[\s([])(\d{1,2}:\d{2}(?::\d{2})?)(?=([\])）.,。、\s]|$))/g, (_match, prefix: string, label: string) => {
-    const seconds = parseTimestampLabel(label);
-    if (seconds === null) {
-      return `${prefix}${label}`;
-    }
+  return text
+    .replace(/(^|[\s([])(\d{1,2}:\d{2}(?::\d{2})?)(?=([\])）.,。、\s]|[~〜～\-–—]|から|$))/g, replaceTimestampMatch)
+    .replace(/(^|[\s([])(\d{1,3})分(?:(\d{1,2})秒)?(?=([\])）.,。、\s]|[~〜～\-–—]|から|$))/g, replaceJapaneseTimestampMatch);
+}
 
-    const url = buildTimestampUrl(seconds);
-    return `${prefix}<a href="${escapeHtml(url)}" data-timestamp-url="${escapeHtml(url)}">${label}</a>`;
-  });
+function replaceTimestampMatch(_match: string, prefix: string, label: string) {
+  const seconds = parseTimestampLabel(label);
+  if (seconds === null) {
+    return `${prefix}${label}`;
+  }
+
+  return `${prefix}${renderTimestampLink(label, seconds)}`;
+}
+
+function replaceJapaneseTimestampMatch(_match: string, prefix: string, minutes: string, seconds: string | undefined) {
+  const totalSeconds = parseJapaneseTimestampLabel(minutes, seconds);
+  if (totalSeconds === null) {
+    const label = `${minutes}分${seconds ? `${seconds}秒` : ""}`;
+    return `${prefix}${label}`;
+  }
+
+  const label = `${minutes}分${seconds ? `${seconds}秒` : ""}`;
+  return `${prefix}${renderTimestampLink(label, totalSeconds)}`;
+}
+
+function renderTimestampLink(label: string, seconds: number) {
+  const url = buildTimestampUrl(seconds);
+  if (!url) {
+    return label;
+  }
+
+  return `<a href="${escapeHtml(url)}" data-timestamp-url="${escapeHtml(url)}">${label}</a>`;
 }
 
 function sanitizeMarkdownUrl(value: string) {
@@ -2171,6 +2212,32 @@ function renderCodexControls() {
 
 function getSelectedOutputText() {
   if (outputMode !== "codexAnswer" && !output.hidden) {
+    const start = output.selectionStart ?? 0;
+    const end = output.selectionEnd ?? 0;
+    const selectedText = output.value.slice(Math.min(start, end), Math.max(start, end)).trim();
+    latestSelectedOutputText = selectedText || latestSelectedOutputText;
+    return selectedText || latestSelectedOutputText;
+  }
+
+  const selection = window.getSelection();
+  const selectedText = selection?.toString().trim() ?? "";
+  if (selectedText && codexAnswerOutput.contains(selection?.anchorNode ?? null)) {
+    latestSelectedOutputText = selectedText;
+    return selectedText;
+  }
+
+  return latestSelectedOutputText;
+}
+
+function cacheSelectedOutputText() {
+  const selectedText = readSelectedOutputText();
+  if (selectedText) {
+    latestSelectedOutputText = selectedText;
+  }
+}
+
+function readSelectedOutputText() {
+  if (!output.hidden) {
     const start = output.selectionStart ?? 0;
     const end = output.selectionEnd ?? 0;
     return output.value.slice(Math.min(start, end), Math.max(start, end)).trim();
@@ -2621,6 +2688,9 @@ function truncateForTimedReference(text: string) {
 
 function buildTimestampUrl(startSeconds: number) {
   const rawUrl = latestTranscript?.webpageUrl || latestCaptionList?.webpageUrl || urlInput.value.trim();
+  if (!rawUrl) {
+    return "";
+  }
 
   try {
     const url = new URL(rawUrl);
@@ -2983,6 +3053,23 @@ function parseTimestampLabel(label: string) {
     return null;
   }
   return first * 3600 + second * 60 + third;
+}
+
+function parseJapaneseTimestampLabel(minutes: string, seconds: string | undefined) {
+  const parsedMinutes = Number(minutes);
+  const parsedSeconds = seconds === undefined ? 0 : Number(seconds);
+
+  if (
+    !Number.isInteger(parsedMinutes) ||
+    !Number.isInteger(parsedSeconds) ||
+    parsedMinutes < 0 ||
+    parsedSeconds < 0 ||
+    parsedSeconds >= 60
+  ) {
+    return null;
+  }
+
+  return parsedMinutes * 60 + parsedSeconds;
 }
 
 function slugifyFileName(value: string) {

@@ -71,7 +71,7 @@ button.compact-button {
 }
 
 .workspace {
-  width: min(1280px, calc(100vw - 32px));
+  width: min(1440px, calc(100vw - 32px));
   margin: 0 auto;
   padding: 32px 0;
 }
