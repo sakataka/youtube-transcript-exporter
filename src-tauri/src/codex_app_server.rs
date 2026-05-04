@@ -84,6 +84,7 @@ pub fn ask(prompt: &str) -> Result<String, CodexAppServerError> {
     let mut line = String::new();
     let mut answer = String::new();
     let mut completed_answer = String::new();
+    let mut generated_images: Vec<String> = Vec::new();
     let mut turn_started = false;
 
     loop {
@@ -162,6 +163,14 @@ pub fn ask(prompt: &str) -> Result<String, CodexAppServerError> {
                         completed_answer.push_str(text);
                     }
                 }
+                if let Some(image_markdown) = extract_image_generation_markdown(&message) {
+                    generated_images.push(image_markdown);
+                }
+            }
+            "rawResponseItem/completed" => {
+                if let Some(image_markdown) = extract_raw_image_generation_markdown(&message) {
+                    generated_images.push(image_markdown);
+                }
             }
             "turn/completed" => {
                 break;
@@ -178,11 +187,21 @@ pub fn ask(prompt: &str) -> Result<String, CodexAppServerError> {
     let _ = child.wait();
     let _ = stderr_handle.join();
 
-    let final_answer = if answer.trim().is_empty() {
+    let mut final_answer = if answer.trim().is_empty() {
         completed_answer.trim().to_string()
     } else {
         answer.trim().to_string()
     };
+
+    generated_images.sort();
+    generated_images.dedup();
+    if !generated_images.is_empty() {
+        if !final_answer.is_empty() {
+            final_answer.push_str("\n\n");
+        }
+        final_answer.push_str("## 生成画像\n\n");
+        final_answer.push_str(&generated_images.join("\n\n"));
+    }
 
     if final_answer.is_empty() {
         let stderr_text = stderr_buffer
@@ -253,9 +272,90 @@ fn extract_completed_agent_message(message: &Value) -> Option<&str> {
         .and_then(Value::as_str)
 }
 
+fn extract_image_generation_markdown(message: &Value) -> Option<String> {
+    let item = message.pointer("/params/item")?;
+    if item.get("type").and_then(Value::as_str) != Some("imageGeneration") {
+        return None;
+    }
+
+    let status = item
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if status != "completed" {
+        return Some(format!(
+            "> 画像生成は完了しませんでした。status: {}",
+            status
+        ));
+    }
+
+    if let Some(result) = item.get("result").and_then(Value::as_str) {
+        if let Some(markdown) = image_result_to_markdown(result) {
+            return Some(markdown);
+        }
+    }
+
+    item.get("savedPath")
+        .and_then(Value::as_str)
+        .map(|path| format!("生成画像は `{}` に保存されました。", path))
+}
+
+fn extract_raw_image_generation_markdown(message: &Value) -> Option<String> {
+    let item = message.pointer("/params/item")?;
+    if item.get("type").and_then(Value::as_str) != Some("image_generation_call") {
+        return None;
+    }
+
+    let status = item
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if status != "completed" {
+        return Some(format!(
+            "> 画像生成は完了しませんでした。status: {}",
+            status
+        ));
+    }
+
+    item.get("result")
+        .and_then(Value::as_str)
+        .and_then(image_result_to_markdown)
+}
+
+fn image_result_to_markdown(result: &str) -> Option<String> {
+    let trimmed = result.trim();
+
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if trimmed.starts_with("data:image/") {
+        return Some(format!("![生成画像]({})", trimmed));
+    }
+
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Some(format!("![生成画像]({})", trimmed));
+    }
+
+    if is_likely_base64_image(trimmed) {
+        return Some(format!("![生成画像](data:image/png;base64,{})", trimmed));
+    }
+
+    None
+}
+
+fn is_likely_base64_image(value: &str) -> bool {
+    value.len() > 128
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '+' | '/' | '=')
+        })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{extract_completed_agent_message, extract_delta};
+    use super::{
+        extract_completed_agent_message, extract_delta, extract_raw_image_generation_markdown,
+    };
     use serde_json::json;
 
     #[test]
@@ -284,5 +384,23 @@ mod tests {
             extract_completed_agent_message(&message),
             Some("完了した回答")
         );
+    }
+
+    #[test]
+    fn extracts_raw_image_generation_as_markdown_image() {
+        let message = json!({
+            "method": "rawResponseItem/completed",
+            "params": {
+                "item": {
+                    "type": "image_generation_call",
+                    "id": "img_1",
+                    "status": "completed",
+                    "result": "a".repeat(160)
+                }
+            }
+        });
+
+        let markdown = extract_raw_image_generation_markdown(&message).unwrap();
+        assert!(markdown.starts_with("![生成画像](data:image/png;base64,"));
     }
 }

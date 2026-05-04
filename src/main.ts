@@ -543,6 +543,7 @@ app.innerHTML = `
           <button class="output-tab" id="codex-answer-view-tab" type="button" data-output-mode="codexAnswer" role="tab" aria-selected="false" aria-controls="transcript-output" data-i18n="codexAnswerView">AI回答</button>
         </div>
         <textarea id="transcript-output" spellcheck="false" readonly></textarea>
+        <div id="codex-answer-output" class="markdown-output" hidden></div>
       </div>
     </section>
 
@@ -647,6 +648,7 @@ const captionPanel = document.querySelector<HTMLElement>("#caption-panel")!;
 const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
 const captionCount = document.querySelector<HTMLElement>("#caption-count")!;
 const output = document.querySelector<HTMLTextAreaElement>("#transcript-output")!;
+const codexAnswerOutput = document.querySelector<HTMLDivElement>("#codex-answer-output")!;
 const message = document.querySelector<HTMLParagraphElement>("#message")!;
 const title = document.querySelector<HTMLHeadingElement>("#video-title")!;
 const videoId = document.querySelector<HTMLElement>("#video-id")!;
@@ -1218,22 +1220,189 @@ function setOutputMode(mode: "transcript" | "copyPrompt" | "codexAnswer") {
 }
 
 function renderOutput() {
+  const isMarkdownOutput = outputMode === "codexAnswer";
+  output.hidden = isMarkdownOutput;
+  codexAnswerOutput.hidden = !isMarkdownOutput;
+
   if (!latestTranscript) {
-    output.value = outputMode === "codexAnswer" ? latestCodexAnswer : "";
+    output.value = "";
+    codexAnswerOutput.innerHTML = isMarkdownOutput ? renderMarkdown(latestCodexAnswer) : "";
     return;
   }
 
   if (outputMode === "copyPrompt") {
     output.value = buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate());
+    codexAnswerOutput.innerHTML = "";
     return;
   }
 
   if (outputMode === "codexAnswer") {
-    output.value = latestCodexAnswer;
+    output.value = "";
+    codexAnswerOutput.innerHTML = renderMarkdown(latestCodexAnswer);
     return;
   }
 
+  codexAnswerOutput.innerHTML = "";
   output.value = getTranscriptTextForDisplay(latestTranscript);
+}
+
+function renderMarkdown(markdown: string) {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const blocks: string[] = [];
+  let paragraph: string[] = [];
+  let listItems: string[] = [];
+  let orderedListItems: string[] = [];
+  let blockquote: string[] = [];
+  let codeLines: string[] | null = null;
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) {
+      return;
+    }
+
+    blocks.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      blocks.push(`<ul>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ul>`);
+      listItems = [];
+    }
+
+    if (orderedListItems.length > 0) {
+      blocks.push(`<ol>${orderedListItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ol>`);
+      orderedListItems = [];
+    }
+  };
+
+  const flushBlockquote = () => {
+    if (blockquote.length === 0) {
+      return;
+    }
+
+    blocks.push(`<blockquote>${blockquote.map((line) => `<p>${renderInlineMarkdown(line)}</p>`).join("")}</blockquote>`);
+    blockquote = [];
+  };
+
+  const flushOpenBlocks = () => {
+    flushParagraph();
+    flushList();
+    flushBlockquote();
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+
+    if (codeLines) {
+      if (trimmed.startsWith("```")) {
+        blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        codeLines = null;
+      } else {
+        codeLines.push(rawLine);
+      }
+      continue;
+    }
+
+    if (trimmed.startsWith("```")) {
+      flushOpenBlocks();
+      codeLines = [];
+      continue;
+    }
+
+    if (!trimmed) {
+      flushOpenBlocks();
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      flushOpenBlocks();
+      const level = heading[1].length;
+      blocks.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    if (/^---+$/.test(trimmed)) {
+      flushOpenBlocks();
+      blocks.push("<hr />");
+      continue;
+    }
+
+    const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+    if (unordered) {
+      flushParagraph();
+      flushBlockquote();
+      orderedListItems = [];
+      listItems.push(unordered[1]);
+      continue;
+    }
+
+    const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (ordered) {
+      flushParagraph();
+      flushBlockquote();
+      listItems = [];
+      orderedListItems.push(ordered[1]);
+      continue;
+    }
+
+    const quote = trimmed.match(/^>\s?(.*)$/);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      blockquote.push(quote[1]);
+      continue;
+    }
+
+    flushList();
+    flushBlockquote();
+    paragraph.push(trimmed);
+  }
+
+  if (codeLines) {
+    blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+  }
+  flushOpenBlocks();
+
+  return blocks.join("");
+}
+
+function renderInlineMarkdown(text: string) {
+  const escaped = escapeHtml(text);
+  return escaped
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_match, alt: string, url: string) => {
+      const safeUrl = sanitizeMarkdownUrl(url);
+      if (!safeUrl || (!safeUrl.startsWith("data:image/") && !safeUrl.startsWith("http"))) {
+        return escapeHtml(alt);
+      }
+
+      return `<img src="${escapeHtml(safeUrl)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
+    })
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label: string, url: string) => {
+      const safeUrl = sanitizeMarkdownUrl(url);
+      if (!safeUrl) {
+        return label;
+      }
+
+      return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">${label}</a>`;
+    })
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+    .replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+    .replace(/_([^_\n]+)_/g, "<em>$1</em>");
+}
+
+function sanitizeMarkdownUrl(value: string) {
+  const normalized = value.trim();
+
+  if (/^https?:\/\//i.test(normalized) || /^data:image\/[a-z0-9.+-]+;base64,/i.test(normalized)) {
+    return normalized;
+  }
+
+  return "";
 }
 
 function copyTextWithSelectionFallback(text: string) {

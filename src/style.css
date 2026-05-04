@@ -494,6 +494,141 @@ textarea {
   line-height: 1.7;
 }
 
+textarea[hidden] {
+  display: none;
+}
+
+.markdown-output {
+  min-height: 440px;
+  max-height: 720px;
+  overflow: auto;
+  padding: 22px;
+  color: #17202a;
+  background: #ffffff;
+  line-height: 1.75;
+}
+
+.markdown-output[hidden] {
+  display: none;
+}
+
+.markdown-output > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-output > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-output h1,
+.markdown-output h2,
+.markdown-output h3,
+.markdown-output h4 {
+  color: #111827;
+  line-height: 1.25;
+  margin: 1.35em 0 0.55em;
+}
+
+.markdown-output h1 {
+  font-size: 1.55rem;
+}
+
+.markdown-output h2 {
+  border-bottom: 1px solid #e2e7ec;
+  font-size: 1.32rem;
+  padding-bottom: 0.32em;
+}
+
+.markdown-output h3 {
+  font-size: 1.14rem;
+}
+
+.markdown-output h4 {
+  font-size: 1rem;
+}
+
+.markdown-output p {
+  margin: 0 0 1em;
+}
+
+.markdown-output strong {
+  color: #111827;
+  font-weight: 800;
+}
+
+.markdown-output em {
+  color: #304458;
+}
+
+.markdown-output ul,
+.markdown-output ol {
+  display: grid;
+  gap: 0.35em;
+  margin: 0 0 1.1em;
+  padding-left: 1.35em;
+}
+
+.markdown-output li {
+  padding-left: 0.15em;
+}
+
+.markdown-output blockquote {
+  border-left: 4px solid #cbd3da;
+  color: #4a5a6a;
+  margin: 0 0 1.2em;
+  padding: 0.1em 0 0.1em 1em;
+}
+
+.markdown-output code {
+  border: 1px solid #dce2e7;
+  border-radius: 4px;
+  background: #f5f7f8;
+  color: #111827;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  padding: 0.12em 0.32em;
+}
+
+.markdown-output pre {
+  overflow: auto;
+  border: 1px solid #dce2e7;
+  border-radius: 8px;
+  background: #111827;
+  margin: 0 0 1.2em;
+  padding: 14px;
+}
+
+.markdown-output pre code {
+  border: 0;
+  background: transparent;
+  color: #f8fafc;
+  display: block;
+  padding: 0;
+  white-space: pre;
+}
+
+.markdown-output a {
+  color: #174a87;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-output img {
+  display: block;
+  width: min(100%, 960px);
+  height: auto;
+  border: 1px solid #dce2e7;
+  border-radius: 8px;
+  margin: 1.2em 0;
+}
+
+.markdown-output hr {
+  border: 0;
+  border-top: 1px solid #e2e7ec;
+  margin: 1.6em 0;
+}
+
 .settings-backdrop {
   position: fixed;
   inset: 0;
