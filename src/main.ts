@@ -801,7 +801,10 @@ askCodexButton.addEventListener("click", async () => {
   setCodexLoading(true);
 
   try {
-    latestCodexAnswer = await invoke<CodexAnswerSuccess>("ask_codex", { prompt });
+    latestCodexAnswer = await invoke<CodexAnswerSuccess>("ask_codex", {
+      prompt,
+      generateImage: appSettings.includeImagePrompt
+    });
     renderOutput();
     showMessage(t("codexAnswerReady"));
   } catch (error) {

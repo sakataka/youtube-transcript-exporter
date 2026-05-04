@@ -19,7 +19,13 @@ impl From<String> for CodexAppServerError {
     }
 }
 
-pub fn ask(prompt: &str) -> Result<String, CodexAppServerError> {
+#[derive(Default)]
+struct TurnOutput {
+    text: String,
+    images: Vec<String>,
+}
+
+pub fn ask(prompt: &str, generate_image: bool) -> Result<String, CodexAppServerError> {
     if prompt.trim().is_empty() {
         return Err("Codexに渡す質問文が空です。".to_string().into());
     }
@@ -81,11 +87,109 @@ pub fn ask(prompt: &str) -> Result<String, CodexAppServerError> {
     )?;
 
     let mut reader = BufReader::new(stdout);
+    let thread_id = wait_for_thread_id(&mut reader, &mut child, &stderr_handle)?;
+    let first_turn = run_turn(&mut reader, &mut stdin, 2, &thread_id, prompt)?;
+    let mut final_answer = first_turn.text;
+    let mut generated_images = first_turn.images;
+
+    if generate_image && !final_answer.trim().is_empty() {
+        let image_prompt = build_image_generation_turn_prompt();
+        let image_turn = run_turn(&mut reader, &mut stdin, 3, &thread_id, &image_prompt)?;
+        if !image_turn.text.trim().is_empty() {
+            final_answer.push_str("\n\n## 画像生成メモ\n\n");
+            final_answer.push_str(image_turn.text.trim());
+        }
+        generated_images.extend(image_turn.images);
+    }
+
+    drop(stdin);
+
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = stderr_handle.join();
+
+    generated_images.sort();
+    generated_images.dedup();
+    if !generated_images.is_empty() {
+        if !final_answer.is_empty() {
+            final_answer.push_str("\n\n");
+        }
+        final_answer.push_str("## 生成画像\n\n");
+        final_answer.push_str(&generated_images.join("\n\n"));
+    } else if generate_image {
+        final_answer.push_str("\n\n## 生成画像\n\n");
+        final_answer
+            .push_str("> Codex App Serverから完了済みの画像生成結果を取得できませんでした。");
+    }
+
+    if final_answer.is_empty() {
+        let stderr_text = stderr_buffer
+            .lock()
+            .map(|buffer| buffer.trim().to_string())
+            .unwrap_or_default();
+        let suffix = if stderr_text.is_empty() {
+            "".to_string()
+        } else {
+            format!("\n\nCodex stderr:\n{}", stderr_text)
+        };
+        return Err(format!("Codexから回答を取得できませんでした。{}", suffix).into());
+    }
+
+    Ok(final_answer)
+}
+
+fn wait_for_thread_id(
+    reader: &mut impl BufRead,
+    child: &mut std::process::Child,
+    stderr_handle: &thread::JoinHandle<()>,
+) -> Result<String, CodexAppServerError> {
+    loop {
+        let message = read_message(reader)?;
+        handle_error_message(&message, child, stderr_handle)?;
+
+        if message.get("id").and_then(Value::as_i64) != Some(1) {
+            continue;
+        }
+
+        let Some(thread_id) = message
+            .pointer("/result/thread/id")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+        else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Codex App Serverからthread idを取得できませんでした。"
+                .to_string()
+                .into());
+        };
+
+        return Ok(thread_id);
+    }
+}
+
+fn run_turn(
+    reader: &mut impl BufRead,
+    stdin: &mut impl Write,
+    request_id: i64,
+    thread_id: &str,
+    prompt: &str,
+) -> Result<TurnOutput, CodexAppServerError> {
+    send(
+        stdin,
+        json!({
+            "method": "turn/start",
+            "id": request_id,
+            "params": {
+                "threadId": thread_id,
+                "input": [{ "type": "text", "text": prompt }]
+            }
+        }),
+    )?;
+
     let mut line = String::new();
     let mut answer = String::new();
     let mut completed_answer = String::new();
     let mut generated_images: Vec<String> = Vec::new();
-    let mut turn_started = false;
 
     loop {
         line.clear();
@@ -100,52 +204,13 @@ pub fn ask(prompt: &str) -> Result<String, CodexAppServerError> {
         let Ok(message) = serde_json::from_str::<Value>(line.trim()) else {
             continue;
         };
-
         if let Some(error) = message.get("error") {
             let error_message = error
                 .get("message")
                 .and_then(Value::as_str)
                 .unwrap_or("Codex App Serverでエラーが発生しました。");
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = stderr_handle.join();
             return Err(error_message.to_string().into());
         }
-
-        if message.get("id").and_then(Value::as_i64) == Some(1) {
-            let thread_id = message
-                .pointer("/result/thread/id")
-                .and_then(Value::as_str)
-                .map(ToOwned::to_owned);
-
-            let Some(thread_id) = thread_id.as_deref() else {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = stderr_handle.join();
-                return Err("Codex App Serverからthread idを取得できませんでした。"
-                    .to_string()
-                    .into());
-            };
-
-            send(
-                &mut stdin,
-                json!({
-                    "method": "turn/start",
-                    "id": 2,
-                    "params": {
-                        "threadId": thread_id,
-                        "input": [{ "type": "text", "text": prompt }]
-                    }
-                }),
-            )?;
-            turn_started = true;
-            continue;
-        }
-
-        if message.get("id").and_then(Value::as_i64) == Some(2) {
-            continue;
-        }
-
         let method = message
             .get("method")
             .and_then(Value::as_str)
@@ -179,44 +244,69 @@ pub fn ask(prompt: &str) -> Result<String, CodexAppServerError> {
         }
     }
 
-    drop(stdin);
-
-    if turn_started {
-        let _ = child.kill();
-    }
-    let _ = child.wait();
-    let _ = stderr_handle.join();
-
-    let mut final_answer = if answer.trim().is_empty() {
+    let text = if answer.trim().is_empty() {
         completed_answer.trim().to_string()
     } else {
         answer.trim().to_string()
     };
 
-    generated_images.sort();
-    generated_images.dedup();
-    if !generated_images.is_empty() {
-        if !final_answer.is_empty() {
-            final_answer.push_str("\n\n");
+    Ok(TurnOutput {
+        text,
+        images: generated_images,
+    })
+}
+
+fn read_message(reader: &mut impl BufRead) -> Result<Value, CodexAppServerError> {
+    let mut line = String::new();
+
+    loop {
+        line.clear();
+        let bytes = reader
+            .read_line(&mut line)
+            .map_err(|_| "Codex App Serverの応答を読み取れませんでした。".to_string())?;
+
+        if bytes == 0 {
+            return Err("Codex App Serverが応答を返す前に終了しました。"
+                .to_string()
+                .into());
         }
-        final_answer.push_str("## 生成画像\n\n");
-        final_answer.push_str(&generated_images.join("\n\n"));
+
+        if let Ok(message) = serde_json::from_str::<Value>(line.trim()) {
+            return Ok(message);
+        }
+    }
+}
+
+fn handle_error_message(
+    message: &Value,
+    child: &mut std::process::Child,
+    stderr_handle: &thread::JoinHandle<()>,
+) -> Result<(), CodexAppServerError> {
+    if let Some(error) = message.get("error") {
+        let error_message = error
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("Codex App Serverでエラーが発生しました。");
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = stderr_handle;
+        return Err(error_message.to_string().into());
     }
 
-    if final_answer.is_empty() {
-        let stderr_text = stderr_buffer
-            .lock()
-            .map(|buffer| buffer.trim().to_string())
-            .unwrap_or_default();
-        let suffix = if stderr_text.is_empty() {
-            "".to_string()
-        } else {
-            format!("\n\nCodex stderr:\n{}", stderr_text)
-        };
-        return Err(format!("Codexから回答を取得できませんでした。{}", suffix).into());
-    }
+    Ok(())
+}
 
-    Ok(final_answer)
+fn build_image_generation_turn_prompt() -> String {
+    [
+        "上記の文章回答をもとに、動画内容を1枚の日本語インフォグラフィック画像として生成してください。",
+        "",
+        "要件:",
+        "- 文章回答の要点、話の流れ、重要な主張や関係性が一目でわかる構成にしてください。",
+        "- 日本語の見出しと短いラベルを使ってください。",
+        "- 単なる装飾画像ではなく、理解を助ける図解・インフォグラフィックにしてください。",
+        "- 画像生成結果そのものを返してください。画像生成ができない場合は、その理由を短く説明してください。"
+    ]
+    .join("\n")
 }
 
 fn send(stdin: &mut impl Write, message: Value) -> Result<(), CodexAppServerError> {

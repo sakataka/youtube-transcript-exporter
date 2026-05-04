@@ -34,8 +34,8 @@ fn open_youtube_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn ask_codex(prompt: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || codex_app_server::ask(&prompt))
+async fn ask_codex(prompt: String, generate_image: bool) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || codex_app_server::ask(&prompt, generate_image))
         .await
         .map_err(|_| "Codexの実行タスクが中断されました。".to_string())?
         .map_err(|error| error.message)
