@@ -592,14 +592,65 @@ fn dedupe_caption_tracks(tracks: Vec<CaptionTrack>) -> Vec<CaptionTrack> {
     let mut deduped = Vec::new();
 
     for track in tracks {
-        let key = format!("{}:{:?}", track.language.to_ascii_lowercase(), track.source);
+        let key = caption_dedupe_key(&track);
 
-        if seen.insert(key) {
+        if seen.insert(key.clone()) {
             deduped.push(track);
+            continue;
+        }
+
+        if let Some(existing) = deduped
+            .iter_mut()
+            .find(|existing| caption_dedupe_key(existing) == key)
+        {
+            if should_replace_caption_track(existing, &track) {
+                *existing = track;
+            }
         }
     }
 
     deduped
+}
+
+fn caption_dedupe_key(track: &CaptionTrack) -> String {
+    let language = if matches!(track.source, CaptionSource::Automatic) {
+        canonical_caption_language(&track.language)
+    } else {
+        track.language.to_ascii_lowercase()
+    };
+
+    format!("{}:{:?}", language, track.source)
+}
+
+fn canonical_caption_language(language: &str) -> String {
+    let normalized = language.to_ascii_lowercase();
+
+    normalized
+        .strip_suffix("-orig")
+        .unwrap_or(&normalized)
+        .split('-')
+        .next()
+        .unwrap_or(normalized.as_str())
+        .to_string()
+}
+
+fn should_replace_caption_track(existing: &CaptionTrack, candidate: &CaptionTrack) -> bool {
+    caption_preference_score(candidate) > caption_preference_score(existing)
+}
+
+fn caption_preference_score(track: &CaptionTrack) -> u8 {
+    let language = track.language.to_ascii_lowercase();
+    let name = track.name.to_ascii_lowercase();
+
+    if language.ends_with("-orig") || name.contains("original") {
+        return 2;
+    }
+
+    if !language.contains('-') {
+        return 1;
+    }
+
+    0
 }
 
 fn add_unique(ranked: &mut Vec<CaptionTrack>, track: Option<CaptionTrack>) {
@@ -1100,6 +1151,25 @@ mod tests {
                 .map(|track| format!("{}:{:?}", track.language, track.source))
                 .collect::<Vec<_>>(),
             ["ja:Manual", "en:Manual", "ja:Automatic", "fr:Automatic"]
+        );
+    }
+
+    #[test]
+    fn collapses_automatic_caption_aliases_for_same_base_language() {
+        let tracks = rank_caption_tracks(&info(serde_json::json!({
+            "automatic_captions": {
+                "en": [{ "ext": "vtt", "url": "https://example.com/en-auto.vtt", "name": "English" }],
+                "en-orig": [{ "ext": "vtt", "url": "https://example.com/en-orig-auto.vtt", "name": "English (Original)" }],
+                "ja": [{ "ext": "vtt", "url": "https://example.com/ja-auto.vtt", "name": "Japanese" }]
+            }
+        })));
+
+        assert_eq!(
+            tracks
+                .iter()
+                .map(|track| format!("{}:{}", track.language, track.name))
+                .collect::<Vec<_>>(),
+            ["ja:Japanese", "en-orig:English (Original)"]
         );
     }
 

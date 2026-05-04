@@ -613,12 +613,12 @@ textarea[hidden] {
 }
 
 .markdown-output h1 {
-  font-size: 1.55rem;
+  font-size: 1.72rem;
 }
 
 .markdown-output h2 {
   border-bottom: 1px solid #e2e7ec;
-  font-size: 1.32rem;
+  font-size: 1.48rem;
   padding-bottom: 0.32em;
 }
 

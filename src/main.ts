@@ -1271,7 +1271,7 @@ function renderMarkdown(markdown: string) {
       return;
     }
 
-    blocks.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+    blocks.push(...renderParagraphBlocks(paragraph.join(" ")));
     paragraph = [];
   };
 
@@ -1395,6 +1395,31 @@ function normalizeMarkdownForDisplay(markdown: string) {
     .replace(/([^\n])\s+(\d+[.)]\s+(?:\*\*|__)[^\n]+?(?:\*\*|__))/g, "$1\n\n$2");
 }
 
+function renderParagraphBlocks(text: string) {
+  const numberedSection = text.match(/^(.*?)\s+\d+[.)]\s+(?:\*\*|__)(.+?)(?:\*\*|__)\s*(.*)$/);
+
+  if (!numberedSection) {
+    return [`<p>${renderInlineMarkdown(text)}</p>`];
+  }
+
+  const blocks: string[] = [];
+  const before = numberedSection[1].trim();
+  const title = numberedSection[2].trim();
+  const after = numberedSection[3].trim();
+
+  if (before) {
+    blocks.push(`<p>${renderInlineMarkdown(before)}</p>`);
+  }
+
+  blocks.push(`<h2>${renderInlineMarkdown(title)}</h2>`);
+
+  if (after) {
+    blocks.push(`<p>${renderInlineMarkdown(after)}</p>`);
+  }
+
+  return blocks;
+}
+
 function parseNumberedSectionTitle(text: string) {
   const boldOnly = text.match(/^(?:\*\*|__)(.+?)(?:\*\*|__)\s*$/);
   if (boldOnly) {
@@ -1432,7 +1457,18 @@ function renderInlineMarkdown(text: string) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/__([^_]+)__/g, "<strong>$1</strong>")
     .replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
-    .replace(/_([^_\n]+)_/g, "<em>$1</em>");
+    .replace(/_([^_\n]+)_/g, "<em>$1</em>")
+    .replace(/(^|[\s(])(https?:\/\/[^\s<]+)/gi, (_match, prefix: string, url: string) => {
+      const trailing = url.match(/[),.。、]+$/)?.[0] ?? "";
+      const linkUrl = trailing ? url.slice(0, -trailing.length) : url;
+      const safeUrl = sanitizeMarkdownUrl(linkUrl);
+
+      if (!safeUrl) {
+        return `${prefix}${url}`;
+      }
+
+      return `${prefix}<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">${escapeHtml(linkUrl)}</a>${trailing}`;
+    });
 }
 
 function sanitizeMarkdownUrl(value: string) {
