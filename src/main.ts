@@ -38,7 +38,7 @@ const defaultMarkdownThemeCss = [
   "  color: #17202a;",
   "  background: #ffffff;",
   "  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;",
-  "  line-height: 1.75;",
+  "  line-height: 1.58;",
   "}",
   "",
   ".markdown-output h1,",
@@ -75,6 +75,12 @@ const defaultMarkdownThemeCss = [
   ".markdown-output li::marker {",
   "  color: #31506e;",
   "  font-weight: 800;",
+  "}",
+  "",
+  ".markdown-output ul,",
+  ".markdown-output ol {",
+  "  gap: 0.18em;",
+  "  margin-bottom: 0.85em;",
   "}",
   "",
   ".markdown-output blockquote {",
@@ -275,8 +281,8 @@ const uiText = {
     fetchTranscript: "選択した字幕を取得",
     fetchTranscriptLoading: "取得中",
     copy: "コピー",
-    askCodex: "Codexに質問",
-    askCodexLoading: "質問中",
+    askCodex: "字幕を取得して生成AIに聞く",
+    askCodexLoading: "取得・質問中",
     codexWorking: "Codexが回答を生成しています",
     codexHistoryTitle: "AI回答履歴",
     codexHistoryEmpty: "AI回答の履歴はまだありません。",
@@ -320,6 +326,11 @@ const uiText = {
     markdownThemeCss: "Markdown表示CSS",
     markdownThemeCssDescription: "AI回答タブのMarkdown表示だけに適用するCSSです。`.markdown-output` から始まるセレクタで見出し、色、フォント、背景を調整できます。",
     resetMarkdownTheme: "初期CSSに戻す",
+    debugLog: "デバッグログ",
+    debugLogDescription: "取得時間、生成AIへの依頼内容、応答タイミング、表示処理のタイミングをローカルログへ記録します。通常は見る必要はありません。",
+    openDebugLog: "ログを開く",
+    debugLogOpened: "デバッグログを開きました。",
+    debugLogOpenFailed: "デバッグログを開けませんでした。",
     japanese: "日本語",
     english: "English",
     urlRequired: "YouTube URLを入力してください。",
@@ -334,7 +345,7 @@ const uiText = {
     fetchTranscriptFailed: "取得に失敗しました。",
     transcriptCopyFailed: "取得しましたが、クリップボードにコピーできませんでした。コピーボタンを押すか、本文を選択して手動でコピーしてください。",
     copyFailed: "クリップボードにコピーできませんでした。本文を選択して手動でコピーしてください。",
-    codexPromptRequired: "字幕を取得してからCodexに質問してください。",
+    codexPromptRequired: "字幕候補を選択してから生成AIに質問してください。",
     askingCodex: "",
     codexAnswerReady: "Codexの回答を取得しました。",
     codexAnswerFailed: "Codexから回答を取得できませんでした。",
@@ -394,8 +405,8 @@ const uiText = {
     fetchTranscript: "Get selected caption",
     fetchTranscriptLoading: "Getting",
     copy: "Copy",
-    askCodex: "Ask Codex",
-    askCodexLoading: "Asking",
+    askCodex: "Get caption and ask AI",
+    askCodexLoading: "Getting and asking",
     codexWorking: "Codex is generating an answer",
     codexHistoryTitle: "AI answer history",
     codexHistoryEmpty: "No AI answer history yet.",
@@ -439,6 +450,11 @@ const uiText = {
     markdownThemeCss: "Markdown display CSS",
     markdownThemeCssDescription: "CSS applied only to the AI answer Markdown view. Use selectors starting with `.markdown-output` to adjust headings, colors, fonts, and backgrounds.",
     resetMarkdownTheme: "Reset CSS",
+    debugLog: "Debug log",
+    debugLogDescription: "Writes local timing logs for caption fetching, AI prompts, response timing, and rendering. You usually do not need to open this.",
+    openDebugLog: "Open log",
+    debugLogOpened: "Debug log opened.",
+    debugLogOpenFailed: "Could not open the debug log.",
     japanese: "Japanese",
     english: "English",
     urlRequired: "Enter a YouTube URL.",
@@ -453,7 +469,7 @@ const uiText = {
     fetchTranscriptFailed: "Failed to fetch the transcript.",
     transcriptCopyFailed: "Fetched the transcript, but could not copy it to the clipboard. Press Copy or select the text manually.",
     copyFailed: "Could not copy to the clipboard. Select the text and copy it manually.",
-    codexPromptRequired: "Get a transcript before asking Codex.",
+    codexPromptRequired: "Choose a caption before asking AI.",
     askingCodex: "",
     codexAnswerReady: "Codex answer is ready.",
     codexAnswerFailed: "Could not get a Codex answer.",
@@ -696,6 +712,12 @@ app.innerHTML = `
               <textarea id="settings-markdown-theme-css" class="settings-markdown-theme-css" spellcheck="false"></textarea>
               <p class="hint" data-i18n="markdownThemeCssDescription">AI回答タブのMarkdown表示だけに適用するCSSです。\`.markdown-output\` から始まるセレクタで見出し、色、フォント、背景を調整できます。</p>
 
+              <div class="debug-log-settings">
+                <span class="label" data-i18n="debugLog">デバッグログ</span>
+                <p class="hint" data-i18n="debugLogDescription">取得時間、生成AIへの依頼内容、応答タイミング、表示処理のタイミングをローカルログへ記録します。通常は見る必要はありません。</p>
+                <button class="secondary-button" id="settings-open-debug-log" type="button" data-i18n="openDebugLog">ログを開く</button>
+              </div>
+
               <div class="settings-footer">
                 <button class="secondary-button" id="settings-reset-markdown-theme" type="button" data-i18n="resetMarkdownTheme">初期CSSに戻す</button>
                 <button id="settings-save-display" type="button" data-i18n="save">保存</button>
@@ -758,6 +780,7 @@ const settingsDisplaySection = document.querySelector<HTMLElement>("#settings-di
 const settingsUiLanguage = document.querySelector<HTMLSelectElement>("#settings-ui-language")!;
 const settingsMarkdownThemeCss = document.querySelector<HTMLTextAreaElement>("#settings-markdown-theme-css")!;
 const settingsResetMarkdownTheme = document.querySelector<HTMLButtonElement>("#settings-reset-markdown-theme")!;
+const settingsOpenDebugLog = document.querySelector<HTMLButtonElement>("#settings-open-debug-log")!;
 const settingsSaveDisplay = document.querySelector<HTMLButtonElement>("#settings-save-display")!;
 const captionPanel = document.querySelector<HTMLElement>("#caption-panel")!;
 const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
@@ -865,70 +888,14 @@ captionList.addEventListener("change", (event) => {
   transcriptRequestToken += 1;
   transcriptButton.disabled = !selectedCaption;
   clearTranscript();
+  askCodexButton.disabled = !selectedCaption;
   updateSelectedLanguage();
   updateCaptionSource();
   showMessage(t("captionReady"));
 });
 
 transcriptButton.addEventListener("click", async () => {
-  const url = urlInput.value.trim();
-
-  if (!url || !selectedCaption) {
-    showError(t("selectCaption"));
-    return;
-  }
-
-  const requestToken = (transcriptRequestToken += 1);
-  const requestedCaption = selectedCaption;
-  clearTranscript();
-  setTranscriptLoading(true);
-
-  try {
-    const payload = await invoke<TranscriptSuccess>("fetch_transcript", {
-      url,
-      language: requestedCaption.language,
-      source: requestedCaption.source
-    });
-
-    if (requestToken !== transcriptRequestToken) {
-      return;
-    }
-
-    latestTranscript = payload;
-    title.textContent = payload.title || t("transcriptTitle");
-    videoId.textContent = payload.videoId;
-    videoDuration.textContent = payload.duration || "-";
-    renderCanonicalUrl(payload.webpageUrl);
-    viewCount.textContent = formatCount(payload.viewCount);
-    language.textContent = formatCaptionLabel({
-      language: payload.language,
-      name: requestedCaption.name,
-      source: payload.source,
-      isAutoCaption: payload.source === "automatic"
-    });
-    updateCaptionSource();
-    updateTranscriptCharacterCount();
-    updateTranscriptStats();
-    renderTranscriptSearch();
-    copyButton.disabled = payload.text.length === 0;
-    askCodexButton.disabled = payload.text.length === 0;
-    renderOutput();
-    try {
-      await copyTranscriptToClipboard(payload, getDefaultPromptTemplate());
-    } catch {
-      showMessage(t("transcriptCopyFailed"), true);
-    }
-  } catch (error) {
-    if (requestToken !== transcriptRequestToken) {
-      return;
-    }
-
-    showError(formatInvokeError(error, t("fetchTranscriptFailed")));
-  } finally {
-    if (requestToken === transcriptRequestToken) {
-      setTranscriptLoading(false);
-    }
-  }
+  await fetchSelectedTranscript({ copyAfterFetch: true });
 });
 
 copyButton.addEventListener("click", async () => {
@@ -944,13 +911,24 @@ copyButton.addEventListener("click", async () => {
 });
 
 askCodexButton.addEventListener("click", async () => {
-  if (!latestTranscript) {
+  const transcript = latestTranscript ?? (await fetchSelectedTranscript({ copyAfterFetch: false }));
+  if (!transcript) {
     showError(t("codexPromptRequired"));
     return;
   }
 
-  const prompt = buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate(), {
+  await askCodexWithTranscript(transcript);
+});
+
+async function askCodexWithTranscript(transcript: TranscriptSuccess) {
+  const prompt = buildAnalysisPrompt(transcript, getSelectedPromptTemplate(), {
     includeImageInstruction: false
+  });
+  appendDebugLog("frontend.codex_prompt.built", {
+    templateId: getSelectedPromptTemplate().id,
+    generateImage: appSettings.includeImagePrompt,
+    promptChars: prompt.length,
+    promptPreview: truncateForLog(prompt, 8000)
   });
   await startCodexRequest(prompt, {
     questionKind: "initial",
@@ -958,9 +936,9 @@ askCodexButton.addEventListener("click", async () => {
     selectedExcerpt: "",
     templateId: getSelectedPromptTemplate().id,
     generateImage: appSettings.includeImagePrompt,
-    answerContext: getTranscriptAnswerContext(latestTranscript)
+    answerContext: getTranscriptAnswerContext(transcript)
   });
-});
+}
 
 copyCodexAnswerButton.addEventListener("click", async () => {
   await copyLatestCodexAnswer();
@@ -1293,6 +1271,15 @@ settingsResetMarkdownTheme.addEventListener("click", () => {
   showMessage(t("markdownThemeReset"));
 });
 
+settingsOpenDebugLog.addEventListener("click", async () => {
+  try {
+    await invoke("open_debug_log");
+    showMessage(t("debugLogOpened"));
+  } catch (error) {
+    showMessage(formatInvokeError(error, t("debugLogOpenFailed")), true);
+  }
+});
+
 function renderCaptionOptions(captions: CaptionOption[]) {
   const selectedIndex = selectedCaption
     ? captions.findIndex(
@@ -1336,12 +1323,96 @@ function setTranscriptLoading(isLoading: boolean) {
 }
 
 function setCodexLoading(isLoading: boolean) {
-  askCodexButton.disabled = isLoading || !latestTranscript;
+  askCodexButton.disabled = isLoading || (!latestTranscript && !selectedCaption);
   askCodexButton.textContent = isLoading ? t("askCodexLoading") : t("askCodex");
   askCodexButton.classList.toggle("is-loading", isLoading);
   codexActivity.hidden = !isLoading;
   cancelCodexAnswerButton.hidden = !isLoading;
   renderCodexControls();
+}
+
+async function fetchSelectedTranscript(options: { copyAfterFetch: boolean }) {
+  const url = urlInput.value.trim();
+
+  if (!url || !selectedCaption) {
+    showError(t("selectCaption"));
+    return null;
+  }
+
+  const requestToken = (transcriptRequestToken += 1);
+  const requestedCaption = selectedCaption;
+  const startedAt = performance.now();
+  clearTranscript();
+  setTranscriptLoading(true);
+  askCodexButton.disabled = true;
+  appendDebugLog("frontend.fetch_transcript.request", {
+    language: requestedCaption.language,
+    source: requestedCaption.source,
+    copyAfterFetch: options.copyAfterFetch
+  });
+
+  try {
+    const payload = await invoke<TranscriptSuccess>("fetch_transcript", {
+      url,
+      language: requestedCaption.language,
+      source: requestedCaption.source
+    });
+
+    if (requestToken !== transcriptRequestToken) {
+      return null;
+    }
+
+    applyTranscriptPayload(payload, requestedCaption);
+    appendDebugLog("frontend.fetch_transcript.applied", {
+      elapsedMs: Math.round(performance.now() - startedAt),
+      textChars: payload.text.length,
+      timedSegments: payload.timedSegments.length
+    });
+
+    if (options.copyAfterFetch) {
+      try {
+        await copyTranscriptToClipboard(payload, getDefaultPromptTemplate());
+      } catch {
+        showMessage(t("transcriptCopyFailed"), true);
+      }
+    }
+
+    return payload;
+  } catch (error) {
+    if (requestToken !== transcriptRequestToken) {
+      return null;
+    }
+
+    showError(formatInvokeError(error, t("fetchTranscriptFailed")));
+    return null;
+  } finally {
+    if (requestToken === transcriptRequestToken) {
+      setTranscriptLoading(false);
+      askCodexButton.disabled = !latestTranscript && !selectedCaption;
+    }
+  }
+}
+
+function applyTranscriptPayload(payload: TranscriptSuccess, requestedCaption: CaptionOption) {
+  latestTranscript = payload;
+  title.textContent = payload.title || t("transcriptTitle");
+  videoId.textContent = payload.videoId;
+  videoDuration.textContent = payload.duration || "-";
+  renderCanonicalUrl(payload.webpageUrl);
+  viewCount.textContent = formatCount(payload.viewCount);
+  language.textContent = formatCaptionLabel({
+    language: payload.language,
+    name: requestedCaption.name,
+    source: payload.source,
+    isAutoCaption: payload.source === "automatic"
+  });
+  updateCaptionSource();
+  updateTranscriptCharacterCount();
+  updateTranscriptStats();
+  renderTranscriptSearch();
+  copyButton.disabled = payload.text.length === 0;
+  askCodexButton.disabled = payload.text.length === 0;
+  renderOutput();
 }
 
 async function checkCaptionCandidates(url: string) {
@@ -1366,6 +1437,7 @@ async function checkCaptionCandidates(url: string) {
     viewCount.textContent = formatCount(payload.viewCount);
     renderCaptionOptions(payload.captions);
     transcriptButton.disabled = !selectedCaption;
+    askCodexButton.disabled = !selectedCaption;
     showMessage(selectedCaption ? t("chooseCaption") : t("noCaptions"));
     updateSelectedLanguage();
     updateCaptionSource();
@@ -1415,7 +1487,7 @@ function clearTranscript() {
   charCount.textContent = "0";
   segmentCount.textContent = "0";
   copyButton.disabled = true;
-  askCodexButton.disabled = true;
+  askCodexButton.disabled = !selectedCaption;
   transcriptButton.textContent = t("fetchTranscript");
   isTranscriptSearchExpanded = false;
   transcriptSearchInput.value = "";
@@ -1436,6 +1508,16 @@ function showError(text: string) {
 function showMessage(text: string, isError = false) {
   message.textContent = text;
   message.classList.toggle("error", isError);
+}
+
+function appendDebugLog(event: string, details: Record<string, unknown>) {
+  void invoke("append_debug_log", { entry: { event, details } }).catch(() => {
+    // Debug logging must never block the primary workflow.
+  });
+}
+
+function truncateForLog(value: string, maxLength: number) {
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
 function formatInvokeError(error: unknown, fallback: string) {
@@ -1533,6 +1615,7 @@ function setOutputMode(mode: CodexOutputMode) {
 }
 
 function renderOutput() {
+  const renderStartedAt = performance.now();
   const isMarkdownOutput = outputMode === "codexAnswer";
   output.hidden = isMarkdownOutput;
   codexAnswerOutput.hidden = !isMarkdownOutput;
@@ -1542,12 +1625,14 @@ function renderOutput() {
     output.value = "";
     codexAnswerOutput.innerHTML = isMarkdownOutput ? renderMarkdown(latestCodexAnswer) : "";
     renderCodexControls();
+    logRenderOutput(renderStartedAt);
     return;
   }
 
   if (outputMode === "copyPrompt") {
     output.value = buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate());
     codexAnswerOutput.innerHTML = "";
+    logRenderOutput(renderStartedAt);
     return;
   }
 
@@ -1555,12 +1640,23 @@ function renderOutput() {
     output.value = "";
     codexAnswerOutput.innerHTML = renderMarkdown(latestCodexAnswer);
     renderCodexControls();
+    logRenderOutput(renderStartedAt);
     return;
   }
 
   codexAnswerOutput.innerHTML = "";
   output.value = getTranscriptTextForDisplay(latestTranscript);
   renderCodexControls();
+  logRenderOutput(renderStartedAt);
+}
+
+function logRenderOutput(renderStartedAt: number) {
+  appendDebugLog("frontend.output.rendered", {
+    mode: outputMode,
+    elapsedMs: Math.round(performance.now() - renderStartedAt),
+    transcriptChars: latestTranscript?.text.length ?? 0,
+    answerChars: latestCodexAnswer.length
+  });
 }
 
 function renderMarkdown(markdown: string) {
@@ -1837,8 +1933,8 @@ function linkTimestampLabels(text: string) {
   }
 
   return text
-    .replace(/(^|[\s([])(\d{1,2}:\d{2}(?::\d{2})?)(?=([\])）.,。、\s]|[~〜～\-–—]|から|$))/g, replaceTimestampMatch)
-    .replace(/(^|[\s([])(\d{1,3})分(?:(\d{1,2})秒)?(?=([\])）.,。、\s]|[~〜～\-–—]|から|$))/g, replaceJapaneseTimestampMatch);
+    .replace(/(^|[\s([（])(\d{1,2}:\d{2}(?::\d{2})?)(?=([\])）.,。、\s]|[~〜～\-–—]|から|$))/g, replaceTimestampMatch)
+    .replace(/(^|[\s([（])(\d{1,3})分(?:(\d{1,2})秒)?(?=([\])）.,。、\s]|[~〜～\-–—]|から|$))/g, replaceJapaneseTimestampMatch);
 }
 
 function replaceTimestampMatch(_match: string, prefix: string, label: string) {

@@ -1,3 +1,4 @@
+use crate::debug_log;
 use serde_json::{json, Value};
 use std::{
     env,
@@ -9,6 +10,7 @@ use std::{
         Arc, Mutex,
     },
     thread,
+    time::Instant,
 };
 
 #[derive(Debug)]
@@ -63,6 +65,16 @@ pub fn ask_with_control(
     }
 
     let codex = find_codex_executable();
+    let run_started_at = Instant::now();
+    debug_log::append_event(
+        "codex_app_server.run.start",
+        json!({
+            "generateImage": generate_image,
+            "prompt": debug_log::prompt_details(prompt),
+            "codexPath": codex.to_string_lossy(),
+        }),
+    );
+    let spawn_started_at = Instant::now();
     let mut child = Command::new(&codex)
         .arg("app-server")
         .stdin(Stdio::piped())
@@ -70,6 +82,12 @@ pub fn ask_with_control(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|_| "Codex CLIを起動できませんでした。Codex CLIをインストールし、`codex` にPATHが通っているか確認してください。".to_string())?;
+    debug_log::append_event(
+        "codex_app_server.process.spawned",
+        json!({
+            "elapsedMs": spawn_started_at.elapsed().as_millis(),
+        }),
+    );
 
     let mut stdin = child
         .stdin
@@ -123,8 +141,25 @@ pub fn ask_with_control(
     )?;
 
     let mut reader = BufReader::new(stdout);
+    let thread_started_at = Instant::now();
     let thread_id = wait_for_thread_id(&mut reader, &control, &stderr_handle)?;
+    debug_log::append_event(
+        "codex_app_server.thread.ready",
+        json!({
+            "elapsedMs": thread_started_at.elapsed().as_millis(),
+            "threadId": &thread_id,
+        }),
+    );
+    let first_turn_started_at = Instant::now();
     let first_turn = run_turn(&mut reader, &mut stdin, 2, &thread_id, prompt, &control)?;
+    debug_log::append_event(
+        "codex_app_server.turn.first.completed",
+        json!({
+            "elapsedMs": first_turn_started_at.elapsed().as_millis(),
+            "textChars": first_turn.text.chars().count(),
+            "imageCount": first_turn.images.len(),
+        }),
+    );
     if control.is_cancelled() {
         cleanup_child(&control);
         let _ = stderr_handle.join();
@@ -135,7 +170,16 @@ pub fn ask_with_control(
 
     if generate_image && !final_answer.trim().is_empty() {
         let image_prompt = build_image_generation_turn_prompt();
+        let image_turn_started_at = Instant::now();
         let image_turn = run_turn(&mut reader, &mut stdin, 3, &thread_id, &image_prompt, &control)?;
+        debug_log::append_event(
+            "codex_app_server.turn.image.completed",
+            json!({
+                "elapsedMs": image_turn_started_at.elapsed().as_millis(),
+                "textChars": image_turn.text.chars().count(),
+                "imageCount": image_turn.images.len(),
+            }),
+        );
         if control.is_cancelled() {
             cleanup_child(&control);
             let _ = stderr_handle.join();
@@ -162,6 +206,13 @@ pub fn ask_with_control(
         final_answer.push_str("## 生成画像\n\n");
         final_answer.push_str(&generated_images.join("\n\n"));
     } else if generate_image {
+        debug_log::append_event(
+            "codex_app_server.image.missing",
+            json!({
+                "elapsedMs": run_started_at.elapsed().as_millis(),
+                "finalAnswerChars": final_answer.chars().count(),
+            }),
+        );
         final_answer.push_str("\n\n## 生成画像\n\n");
         final_answer
             .push_str("> Codex App Serverから完了済みの画像生成結果を取得できませんでした。");
@@ -180,6 +231,14 @@ pub fn ask_with_control(
         return Err(format!("Codexから回答を取得できませんでした。{}", suffix).into());
     }
 
+    debug_log::append_event(
+        "codex_app_server.run.completed",
+        json!({
+            "elapsedMs": run_started_at.elapsed().as_millis(),
+            "answerChars": final_answer.chars().count(),
+            "imageCount": generated_images.len(),
+        }),
+    );
     Ok(final_answer)
 }
 
@@ -230,6 +289,14 @@ fn run_turn(
     prompt: &str,
     control: &CodexRunControl,
 ) -> Result<TurnOutput, CodexAppServerError> {
+    let turn_started_at = Instant::now();
+    debug_log::append_event(
+        "codex_app_server.turn.start",
+        json!({
+            "requestId": request_id,
+            "promptChars": prompt.chars().count(),
+        }),
+    );
     send(
         stdin,
         json!({
@@ -302,7 +369,15 @@ fn run_turn(
                 }
             }
             "rawResponseItem/completed" => {
-                if let Some(image_markdown) = extract_raw_image_generation_markdown(&message) {
+                let image_markdown = extract_raw_image_generation_markdown(&message);
+                debug_log::append_event(
+                    "codex_app_server.raw_response_item.completed",
+                    json!({
+                        "requestId": request_id,
+                        "hasImageMarkdown": image_markdown.is_some(),
+                    }),
+                );
+                if let Some(image_markdown) = image_markdown {
                     generated_images.push(image_markdown);
                 }
             }
@@ -319,6 +394,15 @@ fn run_turn(
         answer.trim().to_string()
     };
 
+    debug_log::append_event(
+        "codex_app_server.turn.completed",
+        json!({
+            "requestId": request_id,
+            "elapsedMs": turn_started_at.elapsed().as_millis(),
+            "textChars": text.chars().count(),
+            "imageCount": generated_images.len(),
+        }),
+    );
     Ok(TurnOutput {
         text,
         images: generated_images,

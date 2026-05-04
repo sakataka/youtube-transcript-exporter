@@ -1,7 +1,9 @@
 mod codex_app_server;
+mod debug_log;
 mod transcript;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     process::Command,
@@ -10,7 +12,7 @@ use std::{
         Arc, Mutex,
     },
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use transcript::{CaptionListResult, CaptionSource, TranscriptError, TranscriptResult};
 use url::Url;
@@ -51,11 +53,46 @@ struct CodexRequestStatus {
     error: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FrontendDebugLogEntry {
+    event: String,
+    details: Value,
+}
+
 #[tauri::command]
 async fn list_captions(url: String) -> Result<CaptionListResult, String> {
+    let started_at = Instant::now();
+    debug_log::append_event(
+        "tauri.list_captions.start",
+        json!({
+            "url": &url,
+        }),
+    );
     transcript::list_captions(&url)
         .await
-        .map_err(format_transcript_error)
+        .inspect(|result| {
+            debug_log::append_event(
+                "tauri.list_captions.completed",
+                json!({
+                    "elapsedMs": started_at.elapsed().as_millis(),
+                    "captionCount": result.captions.len(),
+                    "videoId": &result.video_id,
+                    "title": &result.title,
+                }),
+            );
+        })
+        .map_err(|error| {
+            let message = format_transcript_error(error);
+            debug_log::append_event(
+                "tauri.list_captions.failed",
+                json!({
+                    "elapsedMs": started_at.elapsed().as_millis(),
+                    "error": message,
+                }),
+            );
+            message
+        })
 }
 
 #[tauri::command]
@@ -64,9 +101,41 @@ async fn fetch_transcript(
     language: String,
     source: CaptionSource,
 ) -> Result<TranscriptResult, String> {
+    let started_at = Instant::now();
+    debug_log::append_event(
+        "tauri.fetch_transcript.start",
+        json!({
+            "url": &url,
+            "language": &language,
+            "source": &source,
+        }),
+    );
     transcript::fetch_transcript(&url, Some((language, source)))
         .await
-        .map_err(format_transcript_error)
+        .inspect(|result| {
+            debug_log::append_event(
+                "tauri.fetch_transcript.completed",
+                json!({
+                    "elapsedMs": started_at.elapsed().as_millis(),
+                    "videoId": &result.video_id,
+                    "language": &result.language,
+                    "source": &result.source,
+                    "textChars": result.text.chars().count(),
+                    "timedSegments": result.timed_segments.len(),
+                }),
+            );
+        })
+        .map_err(|error| {
+            let message = format_transcript_error(error);
+            debug_log::append_event(
+                "tauri.fetch_transcript.failed",
+                json!({
+                    "elapsedMs": started_at.elapsed().as_millis(),
+                    "error": message,
+                }),
+            );
+            message
+        })
 }
 
 #[tauri::command]
@@ -98,6 +167,14 @@ fn start_codex_request(
     }
 
     let job_id = create_codex_job_id(&state);
+    debug_log::append_event(
+        "tauri.codex_request.start",
+        json!({
+            "jobId": &job_id,
+            "generateImage": generate_image,
+            "prompt": debug_log::prompt_details(&prompt),
+        }),
+    );
     let control = codex_app_server::CodexRunControl::default();
     {
         let mut jobs = state
@@ -118,6 +195,7 @@ fn start_codex_request(
     let state_for_thread = Arc::clone(&state);
     let job_id_for_thread = job_id.clone();
     thread::spawn(move || {
+        let started_at = Instant::now();
         let result = codex_app_server::ask_with_control(&prompt, generate_image, control.clone());
         let Ok(mut jobs) = state_for_thread.codex_jobs.lock() else {
             return;
@@ -129,6 +207,13 @@ fn start_codex_request(
         if control.is_cancelled() || job.status == CodexJobStatus::Cancelled {
             job.status = CodexJobStatus::Cancelled;
             job.error = Some("Codexへの質問をキャンセルしました。".to_string());
+            debug_log::append_event(
+                "tauri.codex_request.cancelled",
+                json!({
+                    "jobId": job_id_for_thread,
+                    "elapsedMs": started_at.elapsed().as_millis(),
+                }),
+            );
             return;
         }
 
@@ -137,15 +222,57 @@ fn start_codex_request(
                 job.status = CodexJobStatus::Completed;
                 job.answer = Some(answer);
                 job.error = None;
+                debug_log::append_event(
+                    "tauri.codex_request.completed",
+                    json!({
+                        "jobId": job_id_for_thread,
+                        "elapsedMs": started_at.elapsed().as_millis(),
+                        "answerChars": job.answer.as_ref().map(|value| value.chars().count()).unwrap_or_default(),
+                    }),
+                );
             }
             Err(error) => {
                 job.status = CodexJobStatus::Failed;
                 job.error = Some(error.message);
+                debug_log::append_event(
+                    "tauri.codex_request.failed",
+                    json!({
+                        "jobId": job_id_for_thread,
+                        "elapsedMs": started_at.elapsed().as_millis(),
+                        "error": &job.error,
+                    }),
+                );
             }
         }
     });
 
     Ok(StartCodexRequestResult { job_id })
+}
+
+#[tauri::command]
+fn append_debug_log(entry: FrontendDebugLogEntry) -> Result<(), String> {
+    debug_log::append_event_result(&entry.event, entry.details)
+}
+
+#[tauri::command]
+fn get_debug_log_path() -> Result<String, String> {
+    Ok(debug_log::debug_log_path()?.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn open_debug_log() -> Result<(), String> {
+    let path = debug_log::debug_log_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| format!("ログディレクトリを作成できませんでした: {error}"))?;
+    }
+    if !path.exists() {
+        std::fs::write(&path, "").map_err(|error| format!("ログファイルを作成できませんでした: {error}"))?;
+    }
+    Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|_| "ログファイルを開けませんでした。".to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -235,7 +362,10 @@ pub fn run() {
             ask_codex,
             start_codex_request,
             get_codex_request,
-            cancel_codex_request
+            cancel_codex_request,
+            append_debug_log,
+            get_debug_log_path,
+            open_debug_log
         ])
         .run(tauri::generate_context!())
         .expect("failed to run app");

@@ -625,7 +625,7 @@ textarea[hidden] {
   padding: 22px;
   color: #17202a;
   background: #ffffff;
-  line-height: 1.75;
+  line-height: 1.58;
 }
 
 .markdown-output[hidden] {
@@ -683,8 +683,8 @@ textarea[hidden] {
 .markdown-output ul,
 .markdown-output ol {
   display: grid;
-  gap: 0.35em;
-  margin: 0 0 1.1em;
+  gap: 0.18em;
+  margin: 0 0 0.85em;
   padding-left: 1.65em;
 }
 
