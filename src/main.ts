@@ -263,6 +263,7 @@ const uiText = {
     copyPromptView: "コピー用プロンプト",
     codexAnswerView: "AI回答",
     transcriptSearchTitle: "字幕内検索",
+    transcriptSearchToggle: "字幕内検索",
     transcriptSearchLabel: "検索語",
     transcriptSearchPlaceholder: "字幕を検索",
     transcriptSearchDisabled: "字幕取得後に検索できます。",
@@ -334,7 +335,7 @@ const uiText = {
     transcriptCopyFailed: "取得しましたが、クリップボードにコピーできませんでした。コピーボタンを押すか、本文を選択して手動でコピーしてください。",
     copyFailed: "クリップボードにコピーできませんでした。本文を選択して手動でコピーしてください。",
     codexPromptRequired: "字幕を取得してからCodexに質問してください。",
-    askingCodex: "Codexに質問しています。回答が終わるまでこのままお待ちください。",
+    askingCodex: "",
     codexAnswerReady: "Codexの回答を取得しました。",
     codexAnswerFailed: "Codexから回答を取得できませんでした。",
     promptChanged: "プロンプトを変更しました。コピーするとこの形式でクリップボードに入ります。",
@@ -381,6 +382,7 @@ const uiText = {
     copyPromptView: "Copy prompt",
     codexAnswerView: "AI answer",
     transcriptSearchTitle: "Search transcript",
+    transcriptSearchToggle: "Search transcript",
     transcriptSearchLabel: "Search term",
     transcriptSearchPlaceholder: "Search transcript",
     transcriptSearchDisabled: "Search is available after fetching a transcript.",
@@ -452,7 +454,7 @@ const uiText = {
     transcriptCopyFailed: "Fetched the transcript, but could not copy it to the clipboard. Press Copy or select the text manually.",
     copyFailed: "Could not copy to the clipboard. Select the text and copy it manually.",
     codexPromptRequired: "Get a transcript before asking Codex.",
-    askingCodex: "Asking Codex. Keep this window open until the answer finishes.",
+    askingCodex: "",
     codexAnswerReady: "Codex answer is ready.",
     codexAnswerFailed: "Could not get a Codex answer.",
     promptChanged: "Prompt changed. Copy will use this format.",
@@ -491,12 +493,12 @@ app.innerHTML = `
     </header>
 
     <form class="input-panel" id="caption-form">
-      <label for="youtube-url" data-i18n="urlLabel">YouTube URL</label>
       <div class="url-row">
         <input
           id="youtube-url"
           name="url"
           type="url"
+          aria-label="YouTube URL"
           placeholder="https://www.youtube.com/watch?v=..."
           autocomplete="off"
           autofocus
@@ -504,7 +506,6 @@ app.innerHTML = `
         />
         <button id="caption-button" type="submit" data-i18n="captionButton">字幕を確認</button>
       </div>
-      <p class="hint" data-i18n="hint">自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。</p>
     </form>
 
     <section class="result-layout" aria-live="polite">
@@ -514,7 +515,6 @@ app.innerHTML = `
           <button id="ask-codex-button" class="secondary-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
           <div id="codex-activity" class="codex-activity" hidden aria-live="polite">
             <span class="codex-pulse" aria-hidden="true"></span>
-            <span data-i18n="codexWorking">Codexが回答を生成しています</span>
           </div>
         </div>
         <div>
@@ -586,8 +586,13 @@ app.innerHTML = `
 
       <div class="output-panel">
         <div class="output-header">
-          <h2 id="video-title">AI向け入力</h2>
-          <p id="message" data-i18n="initialMessage">URLを入力して字幕候補を確認してください。</p>
+          <div class="output-title-row">
+            <div>
+              <h2 id="video-title">AI向け入力</h2>
+              <p id="message" data-i18n="initialMessage">URLを入力して字幕候補を確認してください。</p>
+            </div>
+            <button class="secondary-button compact-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel" data-i18n="transcriptSearchToggle">字幕内検索</button>
+          </div>
         </div>
         <section class="caption-panel" id="caption-panel" hidden>
           <div class="caption-panel-header">
@@ -773,6 +778,7 @@ const transcriptDisplayModeInputs = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="transcript-display-mode"]')
 );
 const transcriptSearchPanel = document.querySelector<HTMLElement>("#transcript-search-panel")!;
+const transcriptSearchToggle = document.querySelector<HTMLButtonElement>("#transcript-search-toggle")!;
 const transcriptSearchInput = document.querySelector<HTMLInputElement>("#transcript-search")!;
 const transcriptSearchCount = document.querySelector<HTMLElement>("#transcript-search-count")!;
 const transcriptSearchResults = document.querySelector<HTMLDivElement>("#transcript-search-results")!;
@@ -810,6 +816,7 @@ let isStartingCodexRequest = false;
 let codexPollTimer: number | undefined;
 let codexHistory = loadCodexHistory();
 let outputMode: CodexOutputMode = "transcript";
+let isTranscriptSearchExpanded = false;
 let elementToRestoreFocus: HTMLElement | null = null;
 let followUpContext: { kind: CodexQuestionKind; selectedExcerpt: string } | null = null;
 
@@ -1028,6 +1035,18 @@ transcriptDisplayModeInputs.forEach((input) => {
 
 transcriptSearchInput.addEventListener("input", () => {
   renderTranscriptSearch();
+});
+
+transcriptSearchToggle.addEventListener("click", () => {
+  if (!latestTranscript) {
+    return;
+  }
+
+  isTranscriptSearchExpanded = !isTranscriptSearchExpanded;
+  renderTranscriptSearch();
+  if (isTranscriptSearchExpanded) {
+    transcriptSearchInput.focus();
+  }
 });
 
 transcriptSearchResults.addEventListener("click", async (event) => {
@@ -1381,6 +1400,7 @@ function clearTranscript() {
   copyButton.disabled = true;
   askCodexButton.disabled = true;
   transcriptButton.textContent = t("fetchTranscript");
+  isTranscriptSearchExpanded = false;
   transcriptSearchInput.value = "";
   renderTranscriptSearch();
   renderCodexControls();
@@ -2343,7 +2363,9 @@ function isTranscriptDisplayMode(value: unknown): value is TranscriptDisplayMode
 
 function renderTranscriptSearch() {
   const segments = latestTranscript ? getSearchableTranscriptSegments(latestTranscript) : [];
-  transcriptSearchPanel.hidden = !latestTranscript;
+  transcriptSearchPanel.hidden = !latestTranscript || !isTranscriptSearchExpanded;
+  transcriptSearchToggle.disabled = !latestTranscript;
+  transcriptSearchToggle.setAttribute("aria-expanded", String(Boolean(latestTranscript && isTranscriptSearchExpanded)));
   transcriptSearchInput.disabled = segments.length === 0;
 
   if (!latestTranscript) {
@@ -2496,6 +2518,7 @@ function buildAnalysisPrompt(
 function buildMarkdownOutputInstruction() {
   return [
     "回答は基本的にMarkdownで返してください。",
+    "前置き、作業方針、確認中である旨は書かず、テンプレートで指定された最初の項目からすぐに始めてください。",
     "見出し、箇条書き、太字、引用、コード、必要に応じた表を使い、読みやすい構造にしてください。",
     "タイトルや主要セクションはMarkdown見出しで表現し、長い本文は短い段落に分けてください。"
   ].join("\n");

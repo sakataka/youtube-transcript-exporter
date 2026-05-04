@@ -79,15 +79,22 @@ button.compact-button {
 .topbar {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
+}
+
+.topbar > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .eyebrow {
-  margin: 0 0 6px;
+  margin: 0;
   color: #506070;
-  font-size: 0.84rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -101,8 +108,10 @@ p {
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(2rem, 5vw, 4rem);
-  line-height: 1;
+  color: #243447;
+  font-size: 1.12rem;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .status-pill {
@@ -126,8 +135,8 @@ h1 {
 }
 
 .input-panel {
-  padding: 18px;
-  margin-bottom: 18px;
+  padding: 12px;
+  margin-bottom: 14px;
 }
 
 .input-panel label,
@@ -219,8 +228,7 @@ input[type="radio"]:focus {
 
 .codex-activity {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
+  place-items: center;
   align-items: center;
   border: 1px solid #dce2e7;
   border-radius: 8px;
@@ -376,6 +384,13 @@ input[type="radio"]:focus {
 .output-header {
   border-bottom: 1px solid #e2e7ec;
   padding: 18px;
+}
+
+.output-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
 }
 
 .output-header h2 {
@@ -997,6 +1012,7 @@ textarea[hidden] {
 
   .topbar,
   .url-row,
+  .output-title-row,
   .result-layout {
     grid-template-columns: 1fr;
   }
