@@ -93,6 +93,14 @@ export type StoredAppSettings = Partial<AppSettings> & {
 export type CodexQuestionKind = "initial" | "rerun" | "followup" | "selection" | "history";
 export type CodexOutputMode = "transcript" | "copyPrompt" | "codexAnswer";
 
+export type CodexAnswerContext = {
+  videoId: string;
+  title: string;
+  url: string;
+  language: string;
+  source: CaptionSource;
+};
+
 export type CodexHistoryEntry = {
   id: string;
   createdAt: string;
@@ -116,4 +124,5 @@ export type PendingCodexRequest = {
   questionText: string;
   selectedExcerpt: string;
   templateId: string;
+  answerContext: CodexAnswerContext | null;
 };

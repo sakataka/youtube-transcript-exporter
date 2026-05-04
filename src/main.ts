@@ -11,6 +11,7 @@ import type {
   CaptionListSuccess,
   CaptionOption,
   CaptionSource,
+  CodexAnswerContext,
   CodexHistoryEntry,
   CodexJobStartSuccess,
   CodexJobStatus,
@@ -708,9 +709,12 @@ let latestCodexAnswer = "";
 let latestCodexQuestionKind: CodexQuestionKind = "initial";
 let latestCodexQuestionText = "";
 let latestCodexSelectedExcerpt = "";
+let latestCodexAnswerContext: CodexAnswerContext | null = null;
 let pendingCodexRequest: PendingCodexRequest | null = null;
 let captionRequestToken = 0;
+let transcriptRequestToken = 0;
 let codexRequestToken = 0;
+let isStartingCodexRequest = false;
 let codexPollTimer: number | undefined;
 let codexHistory = loadCodexHistory();
 let outputMode: CodexOutputMode = "transcript";
@@ -757,6 +761,7 @@ captionList.addEventListener("change", (event) => {
   }
 
   selectedCaption = latestCaptionList?.captions[Number(target.value)] ?? null;
+  transcriptRequestToken += 1;
   transcriptButton.disabled = !selectedCaption;
   clearTranscript();
   updateSelectedLanguage();
@@ -772,15 +777,21 @@ transcriptButton.addEventListener("click", async () => {
     return;
   }
 
-  setTranscriptLoading(true);
+  const requestToken = (transcriptRequestToken += 1);
+  const requestedCaption = selectedCaption;
   clearTranscript();
+  setTranscriptLoading(true);
 
   try {
     const payload = await invoke<TranscriptSuccess>("fetch_transcript", {
       url,
-      language: selectedCaption.language,
-      source: selectedCaption.source
+      language: requestedCaption.language,
+      source: requestedCaption.source
     });
+
+    if (requestToken !== transcriptRequestToken) {
+      return;
+    }
 
     latestTranscript = payload;
     title.textContent = payload.title || t("transcriptTitle");
@@ -790,7 +801,7 @@ transcriptButton.addEventListener("click", async () => {
     viewCount.textContent = formatCount(payload.viewCount);
     language.textContent = formatCaptionLabel({
       language: payload.language,
-      name: selectedCaption.name,
+      name: requestedCaption.name,
       source: payload.source,
       isAutoCaption: payload.source === "automatic"
     });
@@ -807,9 +818,15 @@ transcriptButton.addEventListener("click", async () => {
       showMessage(t("transcriptCopyFailed"), true);
     }
   } catch (error) {
+    if (requestToken !== transcriptRequestToken) {
+      return;
+    }
+
     showError(formatInvokeError(error, t("fetchTranscriptFailed")));
   } finally {
-    setTranscriptLoading(false);
+    if (requestToken === transcriptRequestToken) {
+      setTranscriptLoading(false);
+    }
   }
 });
 
@@ -839,7 +856,8 @@ askCodexButton.addEventListener("click", async () => {
     questionText: getSelectedPromptTemplate().label,
     selectedExcerpt: "",
     templateId: getSelectedPromptTemplate().id,
-    generateImage: appSettings.includeImagePrompt
+    generateImage: appSettings.includeImagePrompt,
+    answerContext: getTranscriptAnswerContext(latestTranscript)
   });
 });
 
@@ -1189,6 +1207,7 @@ function setCodexLoading(isLoading: boolean) {
 
 async function checkCaptionCandidates(url: string) {
   const requestToken = (captionRequestToken += 1);
+  transcriptRequestToken += 1;
   setCaptionLoading(true);
   clearResult();
 
@@ -1238,6 +1257,7 @@ function clearResult() {
   viewCount.textContent = "-";
   updateCaptionSource();
   transcriptButton.disabled = true;
+  transcriptButton.textContent = t("fetchTranscript");
   clearTranscript();
   message.classList.remove("error");
 }
@@ -1248,12 +1268,16 @@ function clearTranscript() {
   latestCodexQuestionKind = "initial";
   latestCodexQuestionText = "";
   latestCodexSelectedExcerpt = "";
+  latestCodexAnswerContext = null;
   pendingCodexRequest = null;
+  isStartingCodexRequest = false;
+  codexRequestToken += 1;
   stopCodexPolling();
   charCount.textContent = "0";
   segmentCount.textContent = "0";
   copyButton.disabled = true;
   askCodexButton.disabled = true;
+  transcriptButton.textContent = t("fetchTranscript");
   transcriptSearchInput.value = "";
   renderTranscriptSearch();
   renderCodexControls();
@@ -1660,12 +1684,19 @@ async function startCodexRequest(
     selectedExcerpt: string;
     templateId: string;
     generateImage: boolean;
+    answerContext: CodexAnswerContext | null;
   }
 ) {
+  if (pendingCodexRequest || isStartingCodexRequest) {
+    return;
+  }
+
   stopCodexPolling();
   const token = codexRequestToken + 1;
   codexRequestToken = token;
+  isStartingCodexRequest = true;
   latestCodexAnswer = "";
+  latestCodexAnswerContext = options.answerContext;
   setOutputMode("codexAnswer");
   setCodexLoading(true);
   showMessage(t("askingCodex"));
@@ -1675,6 +1706,13 @@ async function startCodexRequest(
       prompt,
       generateImage: options.generateImage
     });
+    if (token !== codexRequestToken) {
+      isStartingCodexRequest = false;
+      setCodexLoading(false);
+      void invoke("cancel_codex_request", { jobId: started.jobId });
+      return;
+    }
+
     pendingCodexRequest = {
       jobId: started.jobId,
       token,
@@ -1682,10 +1720,20 @@ async function startCodexRequest(
       questionKind: options.questionKind,
       questionText: options.questionText,
       selectedExcerpt: options.selectedExcerpt,
-      templateId: options.templateId
+      templateId: options.templateId,
+      answerContext: options.answerContext
     };
+    isStartingCodexRequest = false;
+    setCodexLoading(true);
     pollCodexRequest(started.jobId, token);
   } catch (error) {
+    if (token !== codexRequestToken) {
+      isStartingCodexRequest = false;
+      setCodexLoading(false);
+      return;
+    }
+
+    isStartingCodexRequest = false;
     latestCodexAnswer = formatInvokeError(error, t("codexAnswerFailed"));
     pendingCodexRequest = null;
     setCodexLoading(false);
@@ -1734,6 +1782,7 @@ function handleCodexJobStatus(status: CodexJobStatus, token: number) {
     latestCodexQuestionKind = completedRequest.questionKind;
     latestCodexQuestionText = completedRequest.questionText;
     latestCodexSelectedExcerpt = completedRequest.selectedExcerpt;
+    latestCodexAnswerContext = completedRequest.answerContext;
     saveCodexHistoryEntry(completedRequest, status.answer);
     renderOutput();
     showMessage(t("codexAnswerReady"));
@@ -1803,8 +1852,9 @@ function saveLatestCodexAnswerAsMarkdown() {
   const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
+  const context = getActiveCodexAnswerContext();
   link.href = url;
-  link.download = `${slugifyFileName(latestTranscript?.title || "youtube-ai-brief")}.md`;
+  link.download = `${slugifyFileName(context?.title || "youtube-ai-brief")}.md`;
   document.body.append(link);
   link.click();
   link.remove();
@@ -1812,13 +1862,14 @@ function saveLatestCodexAnswerAsMarkdown() {
 }
 
 function buildCodexAnswerMarkdown() {
-  const metadata = latestTranscript
+  const context = getActiveCodexAnswerContext();
+  const metadata = context
     ? [
-        `# ${latestTranscript.title || latestTranscript.videoId}`,
+        `# ${context.title || context.videoId}`,
         "",
-        `- YouTube URL: ${latestTranscript.webpageUrl || urlInput.value.trim()}`,
-        `- 動画ID: ${latestTranscript.videoId}`,
-        `- 字幕: ${latestTranscript.language} (${formatCaptionSource(latestTranscript.source)})`,
+        `- YouTube URL: ${context.url}`,
+        `- 動画ID: ${context.videoId}`,
+        `- 字幕: ${context.language} (${formatCaptionSource(context.source)})`,
         latestCodexQuestionText ? `- 質問: ${latestCodexQuestionText}` : null,
         ""
       ].filter(Boolean)
@@ -1844,7 +1895,8 @@ async function rerunLatestCodexRequest() {
     questionText: latestCodexQuestionText || template.label,
     selectedExcerpt: latestCodexSelectedExcerpt,
     templateId: template.id,
-    generateImage: appSettings.includeImagePrompt
+    generateImage: appSettings.includeImagePrompt,
+    answerContext: getTranscriptAnswerContext(latestTranscript)
   });
 }
 
@@ -1881,14 +1933,18 @@ async function submitFollowUpQuestion() {
     questionText: question,
     selectedExcerpt,
     templateId: getSelectedPromptTemplate().id,
-    generateImage: false
+    generateImage: false,
+    answerContext: getActiveCodexAnswerContext()
   });
 }
 
 function buildFollowUpPrompt(question: string, selectedExcerpt: string) {
   const transcript = latestTranscript;
+  const context = getActiveCodexAnswerContext();
   const sourceAnswer = latestCodexAnswer.trim();
-  const videoMetadata = transcript
+  const shouldUseTranscriptMetadata =
+    transcript && (!context || context.videoId === transcript.videoId);
+  const videoMetadata = shouldUseTranscriptMetadata
     ? [
         `動画タイトル: ${transcript.title || transcript.videoId}`,
         transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
@@ -1898,6 +1954,13 @@ function buildFollowUpPrompt(question: string, selectedExcerpt: string) {
         `動画ID: ${transcript.videoId}`,
         `字幕: ${transcript.language} (${formatCaptionSource(transcript.source)})`
       ].filter(Boolean)
+    : context
+      ? [
+          `動画タイトル: ${context.title || context.videoId}`,
+          `YouTube URL: ${context.url}`,
+          `動画ID: ${context.videoId}`,
+          `字幕: ${context.language} (${formatCaptionSource(context.source)})`
+        ]
     : [`YouTube URL: ${urlInput.value.trim() || "-"}`];
 
   return [
@@ -1920,13 +1983,13 @@ function buildFollowUpPrompt(question: string, selectedExcerpt: string) {
 
 function renderCodexControls() {
   const hasAnswer = latestCodexAnswer.trim().length > 0;
-  const isRunning = Boolean(pendingCodexRequest);
+  const isRunning = Boolean(pendingCodexRequest) || isStartingCodexRequest;
   copyCodexAnswerButton.disabled = !hasAnswer || isRunning;
   saveCodexMarkdownButton.disabled = !hasAnswer || isRunning;
-  rerunCodexAnswerButton.disabled = (!latestTranscript && !hasAnswer) || isRunning;
+  rerunCodexAnswerButton.disabled = !latestTranscript || latestCodexQuestionKind === "history" || isRunning;
   followUpCodexAnswerButton.disabled = !hasAnswer || isRunning;
   askSelectionCodexButton.disabled = isRunning || (!latestTranscript && !hasAnswer);
-  cancelCodexAnswerButton.hidden = !isRunning;
+  cancelCodexAnswerButton.hidden = !pendingCodexRequest;
 }
 
 function getSelectedOutputText() {
@@ -1946,18 +2009,19 @@ function getSelectedOutputText() {
 }
 
 function saveCodexHistoryEntry(request: PendingCodexRequest, answerMarkdown: string) {
-  if (!latestTranscript) {
+  const context = request.answerContext ?? (latestTranscript ? getTranscriptAnswerContext(latestTranscript) : null);
+  if (!context) {
     return;
   }
 
   const entry: CodexHistoryEntry = {
     id: `history-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
-    videoId: latestTranscript.videoId,
-    title: latestTranscript.title || latestTranscript.videoId,
-    url: latestTranscript.webpageUrl || urlInput.value.trim(),
-    language: latestTranscript.language,
-    source: latestTranscript.source,
+    videoId: context.videoId,
+    title: context.title || context.videoId,
+    url: context.url,
+    language: context.language,
+    source: context.source,
     templateId: request.templateId,
     questionKind: request.questionKind,
     questionText: request.questionText,
@@ -2010,9 +2074,34 @@ function restoreCodexHistoryEntry(historyId: string | undefined) {
   latestCodexQuestionKind = "history";
   latestCodexQuestionText = `${t("historyRestoredPrefix")}: ${entry.questionText}`;
   latestCodexSelectedExcerpt = entry.selectedExcerpt;
+  latestCodexAnswerContext = getHistoryAnswerContext(entry);
   setOutputMode("codexAnswer");
   renderOutput();
   showMessage(t("codexHistoryRestored"));
+}
+
+function getTranscriptAnswerContext(transcript: TranscriptSuccess): CodexAnswerContext {
+  return {
+    videoId: transcript.videoId,
+    title: transcript.title || transcript.videoId,
+    url: transcript.webpageUrl || urlInput.value.trim(),
+    language: transcript.language,
+    source: transcript.source
+  };
+}
+
+function getHistoryAnswerContext(entry: CodexHistoryEntry): CodexAnswerContext {
+  return {
+    videoId: entry.videoId,
+    title: entry.title || entry.videoId,
+    url: entry.url,
+    language: entry.language,
+    source: entry.source
+  };
+}
+
+function getActiveCodexAnswerContext() {
+  return latestCodexAnswerContext ?? (latestTranscript ? getTranscriptAnswerContext(latestTranscript) : null);
 }
 
 function loadCodexHistory(): CodexHistoryEntry[] {
