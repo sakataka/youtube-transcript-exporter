@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "YouTube AI Brief",
-        "width": 1120,
-        "height": 960,
-        "minWidth": 820,
+        "width": 1280,
+        "height": 1040,
+        "minWidth": 960,
         "minHeight": 760
       }
     ],
