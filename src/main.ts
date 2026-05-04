@@ -709,6 +709,7 @@ let latestCodexQuestionKind: CodexQuestionKind = "initial";
 let latestCodexQuestionText = "";
 let latestCodexSelectedExcerpt = "";
 let pendingCodexRequest: PendingCodexRequest | null = null;
+let captionRequestToken = 0;
 let codexRequestToken = 0;
 let codexPollTimer: number | undefined;
 let codexHistory = loadCodexHistory();
@@ -1187,11 +1188,16 @@ function setCodexLoading(isLoading: boolean) {
 }
 
 async function checkCaptionCandidates(url: string) {
+  const requestToken = (captionRequestToken += 1);
   setCaptionLoading(true);
   clearResult();
 
   try {
     const payload = await invoke<CaptionListSuccess>("list_captions", { url });
+
+    if (requestToken !== captionRequestToken) {
+      return;
+    }
 
     latestCaptionList = payload;
     selectedCaption = payload.captions[0] ?? null;
@@ -1206,9 +1212,15 @@ async function checkCaptionCandidates(url: string) {
     updateSelectedLanguage();
     updateCaptionSource();
   } catch (error) {
+    if (requestToken !== captionRequestToken) {
+      return;
+    }
+
     showError(formatInvokeError(error, t("listCaptionsFailed")));
   } finally {
-    setCaptionLoading(false);
+    if (requestToken === captionRequestToken) {
+      setCaptionLoading(false);
+    }
   }
 }
 
