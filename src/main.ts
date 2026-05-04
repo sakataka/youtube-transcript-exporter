@@ -1965,8 +1965,15 @@ function saveCodexHistoryEntry(request: PendingCodexRequest, answerMarkdown: str
     answerMarkdown
   };
 
-  codexHistory = [entry, ...codexHistory.filter((item) => item.id !== entry.id)].slice(0, codexHistoryLimit);
-  localStorage.setItem(codexHistoryStorageKey, JSON.stringify(codexHistory));
+  const nextHistory = [entry, ...codexHistory.filter((item) => item.id !== entry.id)].slice(0, codexHistoryLimit);
+
+  try {
+    localStorage.setItem(codexHistoryStorageKey, JSON.stringify(nextHistory));
+    codexHistory = nextHistory;
+  } catch {
+    // History is best-effort; a full or unavailable localStorage must not discard the completed answer.
+  }
+
   renderCodexHistory();
 }
 

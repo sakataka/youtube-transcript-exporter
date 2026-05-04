@@ -6,6 +6,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -13,6 +14,7 @@ use url::Url;
 
 const YTDLP_TIMEOUT: Duration = Duration::from_secs(45);
 const CAPTION_FETCH_TIMEOUT: Duration = Duration::from_secs(25);
+static TEMP_OUTPUT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -705,7 +707,11 @@ fn is_translated_caption(language: &str) -> bool {
 }
 
 fn is_selectable_caption_format(language: &str, caption: &YtDlpCaption) -> bool {
-    caption.url.is_some()
+    caption
+        .url
+        .as_deref()
+        .map(|url| !url.trim().is_empty())
+        .unwrap_or(false)
         && caption.ext.as_deref() == Some("vtt")
         && !is_translated_caption(language)
         && !has_translation_target(caption.url.as_deref())
@@ -775,8 +781,9 @@ fn temp_output_base() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
+    let counter = TEMP_OUTPUT_COUNTER.fetch_add(1, Ordering::Relaxed);
     env::temp_dir().join(format!(
-        "youtube-ai-brief-ytdlp-{}-{unique}",
+        "youtube-ai-brief-ytdlp-{}-{unique}-{counter}",
         std::process::id()
     ))
 }
@@ -869,13 +876,47 @@ fn is_timestamp_tag(value: &str) -> bool {
 }
 
 fn decode_entities(value: &str) -> String {
-    value
+    let named = value
         .replace("&amp;", "&")
         .replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
-        .replace("&nbsp;", " ")
+        .replace("&nbsp;", " ");
+    decode_numeric_entities(&named)
+}
+
+fn decode_numeric_entities(value: &str) -> String {
+    let mut result = String::new();
+    let mut rest = value;
+
+    while let Some(start) = rest.find("&#") {
+        result.push_str(&rest[..start]);
+        let entity_start = &rest[start + 2..];
+        let Some(end) = entity_start.find(';') else {
+            result.push_str(&rest[start..]);
+            return result;
+        };
+
+        let entity = &entity_start[..end];
+        let hex_entity = entity
+            .strip_prefix('x')
+            .or_else(|| entity.strip_prefix('X'));
+        let codepoint = hex_entity
+            .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+            .or_else(|| entity.parse::<u32>().ok());
+
+        if let Some(character) = codepoint.and_then(char::from_u32) {
+            result.push(character);
+        } else {
+            result.push_str(&rest[start..start + end + 3]);
+        }
+
+        rest = &entity_start[end + 1..];
+    }
+
+    result.push_str(rest);
+    result
 }
 
 fn collapse_whitespace(value: &str) -> String {
@@ -1190,6 +1231,19 @@ mod tests {
     }
 
     #[test]
+    fn decodes_decimal_and_hex_entities_in_vtt() {
+        let text = parse_vtt_to_plain_text(
+            r#"WEBVTT
+
+00:00:00.000 --> 00:00:01.000
+Tom&#39;s &#x26; Jerry&#x1F600;
+"#,
+        );
+
+        assert_eq!(text, "Tom's & Jerry😀");
+    }
+
+    #[test]
     fn parses_vtt_with_cue_ids_and_ignores_note_blocks() {
         let text = parse_vtt_to_plain_text(
             r#"WEBVTT
@@ -1281,6 +1335,22 @@ Hello everyone
                 .collect::<Vec<_>>(),
             ["ja"]
         );
+    }
+
+    #[test]
+    fn skips_empty_caption_urls() {
+        let tracks = rank_caption_tracks(&info(serde_json::json!({
+            "subtitles": {
+                "ja": [
+                    { "ext": "vtt", "url": "" },
+                    { "ext": "vtt", "url": "   " },
+                    { "ext": "vtt", "url": "https://example.com/ja.vtt" }
+                ]
+            }
+        })));
+
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].url, "https://example.com/ja.vtt");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-import { cpSync, existsSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, rmSync, statSync, type Stats } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
 const projectRoot = resolve(import.meta.dir, "..");
@@ -42,7 +42,7 @@ function findBuiltApp(root: string, name: string) {
   }
 
   return candidates.sort((left, right) => {
-    return statSync(right).mtimeMs - statSync(left).mtimeMs;
+    return (safeStat(right)?.mtimeMs ?? 0) - (safeStat(left)?.mtimeMs ?? 0);
   })[0];
 }
 
@@ -60,8 +60,8 @@ function findApps(root: string, name: string) {
       continue;
     }
 
-    const stats = statSync(current);
-    if (!stats.isDirectory()) {
+    const stats = safeStat(current);
+    if (!stats?.isDirectory()) {
       continue;
     }
 
@@ -70,11 +70,27 @@ function findApps(root: string, name: string) {
       continue;
     }
 
-    const entries = Array.from(new Bun.Glob("*").scanSync({ cwd: current, onlyFiles: false }));
+    const entries = scanDirectoryEntries(current);
     for (const entry of entries) {
       pending.push(join(current, entry));
     }
   }
 
   return found;
+}
+
+function safeStat(path: string): Stats | null {
+  try {
+    return statSync(path);
+  } catch {
+    return null;
+  }
+}
+
+function scanDirectoryEntries(path: string) {
+  try {
+    return Array.from(new Bun.Glob("*").scanSync({ cwd: path, onlyFiles: false }));
+  } catch {
+    return [];
+  }
 }
