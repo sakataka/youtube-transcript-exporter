@@ -84,6 +84,7 @@ export type AppSettings = {
   includeImagePrompt: boolean;
   formatAutomaticTranscript: boolean;
   transcriptDisplayMode: TranscriptDisplayMode;
+  markdownThemeCss: string;
 };
 
 export type StoredAppSettings = Partial<AppSettings> & {

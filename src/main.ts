@@ -33,6 +33,77 @@ const codexHistoryLimit = 20;
 const codexPollIntervalMs = 900;
 const defaultPromptTemplateId = "default";
 const appName = "YouTube AI Brief";
+const defaultMarkdownThemeCss = [
+  ".markdown-output {",
+  "  color: #17202a;",
+  "  background: #ffffff;",
+  "  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;",
+  "  line-height: 1.75;",
+  "}",
+  "",
+  ".markdown-output h1,",
+  ".markdown-output h2,",
+  ".markdown-output h3,",
+  ".markdown-output h4 {",
+  "  color: #111827;",
+  "  line-height: 1.25;",
+  "  margin: 1.35em 0 0.55em;",
+  "}",
+  "",
+  ".markdown-output h1 {",
+  "  color: #0f3d5e;",
+  "  font-size: 2rem;",
+  "}",
+  "",
+  ".markdown-output h2 {",
+  "  border-bottom: 2px solid #d9e4ee;",
+  "  color: #174a87;",
+  "  font-size: 1.48rem;",
+  "  padding-bottom: 0.32em;",
+  "}",
+  "",
+  ".markdown-output h3 {",
+  "  color: #243447;",
+  "  font-size: 1.14rem;",
+  "}",
+  "",
+  ".markdown-output strong {",
+  "  color: #111827;",
+  "  font-weight: 800;",
+  "}",
+  "",
+  ".markdown-output li::marker {",
+  "  color: #31506e;",
+  "  font-weight: 800;",
+  "}",
+  "",
+  ".markdown-output blockquote {",
+  "  border-left: 4px solid #9fb2c5;",
+  "  background: #f6f9fb;",
+  "  color: #3c4f61;",
+  "  padding: 0.7em 1em;",
+  "}",
+  "",
+  ".markdown-output th {",
+  "  background: #f6f9fb;",
+  "  color: #111827;",
+  "}",
+  "",
+  ".markdown-output code {",
+  "  background: #f5f7f8;",
+  "  color: #111827;",
+  "}",
+  "",
+  ".markdown-output pre {",
+  "  background: #111827;",
+  "}",
+  "",
+  ".markdown-output a {",
+  "  color: #174a87;",
+  "  text-decoration: underline;",
+  "  text-underline-offset: 2px;",
+  "}"
+].join("\n");
 const legacyPromptTemplateInstructions: Record<string, string> = {
   default: [
     "以下はYouTube動画の字幕です。内容を日本語でわかりやすく整理してください。",
@@ -245,6 +316,9 @@ const uiText = {
     save: "保存",
     uiLanguage: "UI言語",
     uiLanguageDescription: "アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。",
+    markdownThemeCss: "Markdown表示CSS",
+    markdownThemeCssDescription: "AI回答タブのMarkdown表示だけに適用するCSSです。`.markdown-output` から始まるセレクタで見出し、色、フォント、背景を調整できます。",
+    resetMarkdownTheme: "初期CSSに戻す",
     japanese: "日本語",
     english: "English",
     urlRequired: "YouTube URLを入力してください。",
@@ -268,6 +342,8 @@ const uiText = {
     settingsReset: "プロンプト設定を初期状態に戻しました。",
     settingsSaved: "プロンプト設定を保存しました。",
     languageSaved: "UI言語を保存しました。",
+    displaySaved: "表示設定を保存しました。",
+    markdownThemeReset: "Markdown表示CSSを初期状態に戻しました。",
     newPrompt: "新しいプロンプト",
     newPromptDescription: "説明を入力してください",
     newPromptInstruction: "以下はYouTube動画の字幕です。内容を日本語で整理してください。",
@@ -358,6 +434,9 @@ const uiText = {
     save: "Save",
     uiLanguage: "UI language",
     uiLanguageDescription: "Changes the app display language. Copied prompt text still uses each template exactly as written.",
+    markdownThemeCss: "Markdown display CSS",
+    markdownThemeCssDescription: "CSS applied only to the AI answer Markdown view. Use selectors starting with `.markdown-output` to adjust headings, colors, fonts, and backgrounds.",
+    resetMarkdownTheme: "Reset CSS",
     japanese: "Japanese",
     english: "English",
     urlRequired: "Enter a YouTube URL.",
@@ -381,6 +460,8 @@ const uiText = {
     settingsReset: "Prompt settings were reset to defaults.",
     settingsSaved: "Prompt settings saved.",
     languageSaved: "UI language saved.",
+    displaySaved: "Display settings saved.",
+    markdownThemeReset: "Markdown display CSS was reset.",
     newPrompt: "New prompt",
     newPromptDescription: "Enter a description",
     newPromptInstruction: "The following is a YouTube video transcript. Please organize the content clearly.",
@@ -605,7 +686,13 @@ app.innerHTML = `
                 <option value="en" data-i18n="english">English</option>
               </select>
               <p class="hint" data-i18n="uiLanguageDescription">アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。</p>
+
+              <label class="label" for="settings-markdown-theme-css" data-i18n="markdownThemeCss">Markdown表示CSS</label>
+              <textarea id="settings-markdown-theme-css" class="settings-markdown-theme-css" spellcheck="false"></textarea>
+              <p class="hint" data-i18n="markdownThemeCssDescription">AI回答タブのMarkdown表示だけに適用するCSSです。\`.markdown-output\` から始まるセレクタで見出し、色、フォント、背景を調整できます。</p>
+
               <div class="settings-footer">
+                <button class="secondary-button" id="settings-reset-markdown-theme" type="button" data-i18n="resetMarkdownTheme">初期CSSに戻す</button>
                 <button id="settings-save-display" type="button" data-i18n="save">保存</button>
               </div>
             </div>
@@ -664,6 +751,8 @@ const outputTabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".out
 const settingsPromptsSection = document.querySelector<HTMLElement>("#settings-prompts-section")!;
 const settingsDisplaySection = document.querySelector<HTMLElement>("#settings-display-section")!;
 const settingsUiLanguage = document.querySelector<HTMLSelectElement>("#settings-ui-language")!;
+const settingsMarkdownThemeCss = document.querySelector<HTMLTextAreaElement>("#settings-markdown-theme-css")!;
+const settingsResetMarkdownTheme = document.querySelector<HTMLButtonElement>("#settings-reset-markdown-theme")!;
 const settingsSaveDisplay = document.querySelector<HTMLButtonElement>("#settings-save-display")!;
 const captionPanel = document.querySelector<HTMLElement>("#caption-panel")!;
 const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
@@ -701,6 +790,9 @@ const followUpModal = document.querySelector<HTMLDivElement>("#follow-up-modal")
 const followUpQuestion = document.querySelector<HTMLTextAreaElement>("#follow-up-question")!;
 const followUpClose = document.querySelector<HTMLButtonElement>("#follow-up-close")!;
 const followUpSubmit = document.querySelector<HTMLButtonElement>("#follow-up-submit")!;
+const markdownThemeStyle = document.createElement("style");
+markdownThemeStyle.id = "markdown-theme-style";
+document.head.append(markdownThemeStyle);
 
 let latestCaptionList: CaptionListSuccess | null = null;
 let selectedCaption: CaptionOption | null = null;
@@ -724,6 +816,7 @@ let followUpContext: { kind: CodexQuestionKind; selectedExcerpt: string } | null
 clearUrlInputOnLaunch();
 renderPromptTemplates();
 renderAppOptions();
+applyMarkdownTheme();
 renderTranscriptDisplayMode();
 renderTranscriptSearch();
 renderCodexControls();
@@ -1148,10 +1241,20 @@ settingsSaveTemplate.addEventListener("click", () => {
 
 settingsSaveDisplay.addEventListener("click", () => {
   appSettings.uiLanguage = settingsUiLanguage.value === "en" ? "en" : "ja";
+  appSettings.markdownThemeCss = settingsMarkdownThemeCss.value;
   saveAppSettings();
+  applyMarkdownTheme();
   applyUiLanguage();
   renderPromptSettingsList(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
-  showMessage(t("languageSaved"));
+  showMessage(t("displaySaved"));
+});
+
+settingsResetMarkdownTheme.addEventListener("click", () => {
+  settingsMarkdownThemeCss.value = defaultMarkdownThemeCss;
+  appSettings.markdownThemeCss = defaultMarkdownThemeCss;
+  saveAppSettings();
+  applyMarkdownTheme();
+  showMessage(t("markdownThemeReset"));
 });
 
 function renderCaptionOptions(captions: CaptionOption[]) {
@@ -1429,6 +1532,7 @@ function renderMarkdown(markdown: string) {
   let listItems: string[] = [];
   let orderedListItems: string[] = [];
   let blockquote: string[] = [];
+  let tableRows: string[][] = [];
   let codeLines: string[] | null = null;
 
   const flushParagraph = () => {
@@ -1461,10 +1565,20 @@ function renderMarkdown(markdown: string) {
     blockquote = [];
   };
 
+  const flushTable = () => {
+    if (tableRows.length === 0) {
+      return;
+    }
+
+    blocks.push(renderTableBlock(tableRows));
+    tableRows = [];
+  };
+
   const flushOpenBlocks = () => {
     flushParagraph();
     flushList();
     flushBlockquote();
+    flushTable();
   };
 
   for (const rawLine of lines) {
@@ -1510,6 +1624,7 @@ function renderMarkdown(markdown: string) {
     if (unordered) {
       flushParagraph();
       flushBlockquote();
+      flushTable();
       orderedListItems = [];
       listItems.push(unordered[1]);
       continue;
@@ -1519,6 +1634,7 @@ function renderMarkdown(markdown: string) {
     if (ordered) {
       flushParagraph();
       flushBlockquote();
+      flushTable();
       listItems = [];
       const section = parseNumberedSectionTitle(ordered[1]);
       if (section) {
@@ -1537,12 +1653,23 @@ function renderMarkdown(markdown: string) {
     if (quote) {
       flushParagraph();
       flushList();
+      flushTable();
       blockquote.push(quote[1]);
+      continue;
+    }
+
+    const tableRow = parseMarkdownTableRow(trimmed);
+    if (tableRow) {
+      flushParagraph();
+      flushList();
+      flushBlockquote();
+      tableRows.push(tableRow);
       continue;
     }
 
     flushList();
     flushBlockquote();
+    flushTable();
     paragraph.push(trimmed);
   }
 
@@ -1597,6 +1724,36 @@ function parseNumberedSectionTitle(text: string) {
   }
 
   return null;
+}
+
+function parseMarkdownTableRow(text: string) {
+  if (!text.includes("|")) {
+    return null;
+  }
+
+  const trimmed = text.replace(/^\|/, "").replace(/\|$/, "");
+  const cells = trimmed.split("|").map((cell) => cell.trim());
+
+  return cells.length >= 2 ? cells : null;
+}
+
+function renderTableBlock(rows: string[][]) {
+  if (rows.length < 2 || !isMarkdownTableSeparator(rows[1])) {
+    return rows.map((row) => `<p>${renderInlineMarkdown(row.join(" | "))}</p>`).join("");
+  }
+
+  const header = rows[0];
+  const bodyRows = rows.slice(2).filter((row) => row.length > 0);
+  const headerHtml = header.map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`).join("");
+  const bodyHtml = bodyRows
+    .map((row) => `<tr>${header.map((_cell, index) => `<td>${renderInlineMarkdown(row[index] ?? "")}</td>`).join("")}</tr>`)
+    .join("");
+
+  return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`;
+}
+
+function isMarkdownTableSeparator(row: string[]) {
+  return row.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
 }
 
 function renderInlineMarkdown(text: string) {
@@ -2304,6 +2461,9 @@ function buildAnalysisPrompt(
     "文章での説明指示:",
     template.instruction,
     "",
+    "出力形式:",
+    buildMarkdownOutputInstruction(),
+    "",
     "補足情報の扱い:",
     "動画字幕だけでは固有名詞、出来事、製品名、人物名、専門用語、時事的背景が不明確な場合は、必要に応じてインターネット上の信頼できる情報も参照して補足してください。",
     "動画に登場している人物や話している人物を、タイトル、チャンネル名、説明欄、字幕などから特定できる場合は、その人物がどういう人かを信頼できる情報で簡潔に調べて説明してください。特定できない場合は、無理に推測せず、この人物調査は省略してください。",
@@ -2331,6 +2491,14 @@ function buildAnalysisPrompt(
   ]
     .filter((line) => line !== null)
     .join("\n");
+}
+
+function buildMarkdownOutputInstruction() {
+  return [
+    "回答は基本的にMarkdownで返してください。",
+    "見出し、箇条書き、太字、引用、コード、必要に応じた表を使い、読みやすい構造にしてください。",
+    "タイトルや主要セクションはMarkdown見出しで表現し、長い本文は短い段落に分けてください。"
+  ].join("\n");
 }
 
 function buildImageGenerationInstruction(template: PromptTemplate) {
@@ -2463,6 +2631,7 @@ function updatePromptDescription() {
 function renderAppOptions() {
   includeImagePrompt.checked = appSettings.includeImagePrompt;
   formatAutomaticTranscript.checked = appSettings.formatAutomaticTranscript;
+  settingsMarkdownThemeCss.value = appSettings.markdownThemeCss;
   renderTranscriptDisplayMode();
 }
 
@@ -2485,6 +2654,7 @@ function openPromptSettings() {
   elementToRestoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   showSettingsSection(activeSettingsSection);
   settingsUiLanguage.value = appSettings.uiLanguage;
+  settingsMarkdownThemeCss.value = appSettings.markdownThemeCss;
   renderPromptSettingsList(promptTemplateSelect.value || promptSettings.defaultTemplateId);
   renderPromptSettingsEditor(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
   promptSettingsModal.hidden = false;
@@ -2569,6 +2739,10 @@ function applyUiLanguage() {
   }
 }
 
+function applyMarkdownTheme() {
+  markdownThemeStyle.textContent = appSettings.markdownThemeCss || defaultMarkdownThemeCss;
+}
+
 function trapSettingsFocus(event: KeyboardEvent) {
   const focusable = Array.from(
     promptSettingsModal.querySelectorAll<HTMLElement>(
@@ -2606,7 +2780,8 @@ function loadAppSettings(): AppSettings {
     uiLanguage: "ja",
     includeImagePrompt: true,
     formatAutomaticTranscript: true,
-    transcriptDisplayMode: "plain"
+    transcriptDisplayMode: "plain",
+    markdownThemeCss: defaultMarkdownThemeCss
   };
 
   try {
@@ -2623,7 +2798,11 @@ function loadAppSettings(): AppSettings {
       uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja",
       includeImagePrompt: parsed.includeImagePrompt !== false,
       formatAutomaticTranscript: parsed.formatAutomaticTranscript !== false,
-      transcriptDisplayMode
+      transcriptDisplayMode,
+      markdownThemeCss:
+        typeof parsed.markdownThemeCss === "string" && parsed.markdownThemeCss.trim()
+          ? parsed.markdownThemeCss
+          : defaultMarkdownThemeCss
     };
 
     if ("recentUrls" in parsed) {

@@ -737,6 +737,26 @@ textarea[hidden] {
   margin: 1.2em 0;
 }
 
+.markdown-output table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1.2em;
+}
+
+.markdown-output th,
+.markdown-output td {
+  border: 1px solid #dce2e7;
+  padding: 0.58em 0.75em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-output th {
+  background: #f6f9fb;
+  color: #111827;
+  font-weight: 800;
+}
+
 .markdown-output hr {
   border: 0;
   border-top: 1px solid #e2e7ec;
@@ -937,12 +957,21 @@ textarea[hidden] {
   gap: 10px;
 }
 
-.settings-template-body {
+.settings-template-body,
+.settings-markdown-theme-css {
   min-height: 260px;
   height: 260px;
   border: 1px solid #cbd3da;
   border-radius: 6px;
   background: #fbfcfd;
+}
+
+.settings-markdown-theme-css {
+  min-height: 300px;
+  height: 300px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+  line-height: 1.55;
 }
 
 .default-template-toggle {
