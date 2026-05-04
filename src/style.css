@@ -202,13 +202,96 @@ input[type="radio"]:focus {
   text-decoration: underline;
 }
 
+.primary-action {
+  display: grid;
+  gap: 10px;
+}
+
 .primary-action button {
   width: 100%;
+}
+
+.primary-action button.is-loading {
+  animation: codex-button-pulse 1.4s ease-in-out infinite;
+  border-color: #2f80ed;
+  color: #174a87;
+}
+
+.codex-activity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #dce2e7;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #31506e;
+  font-size: 0.88rem;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 9px 10px;
+}
+
+.codex-activity[hidden] {
+  display: none;
+}
+
+.codex-pulse {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #2f80ed;
+}
+
+.codex-pulse::before,
+.codex-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(47, 128, 237, 0.35);
+  animation: codex-pulse-ring 1.5s ease-out infinite;
+}
+
+.codex-pulse::after {
+  animation-delay: 0.45s;
 }
 
 .action-buttons {
   display: grid;
   gap: 10px;
+}
+
+@keyframes codex-pulse-ring {
+  0% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2.8);
+  }
+}
+
+@keyframes codex-button-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(47, 128, 237, 0);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px rgba(47, 128, 237, 0.14);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary-action button.is-loading,
+  .codex-pulse::before,
+  .codex-pulse::after {
+    animation: none;
+  }
 }
 
 .prompt-description {

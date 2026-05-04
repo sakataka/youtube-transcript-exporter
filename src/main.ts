@@ -264,6 +264,7 @@ const uiText = {
     copy: "コピー",
     askCodex: "Codexに質問",
     askCodexLoading: "質問中",
+    codexWorking: "Codexが回答を生成しています",
     transcriptTitle: "AI向け入力",
     initialMessage: "URLを入力して字幕候補を確認してください。",
     captionsTitle: "取得可能な字幕",
@@ -356,6 +357,7 @@ const uiText = {
     copy: "Copy",
     askCodex: "Ask Codex",
     askCodexLoading: "Asking",
+    codexWorking: "Codex is generating an answer",
     transcriptTitle: "AI-ready input",
     initialMessage: "Enter a URL to check available captions.",
     captionsTitle: "Available captions",
@@ -447,6 +449,11 @@ app.innerHTML = `
       <div class="meta-panel">
         <div class="primary-action">
           <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
+          <button id="ask-codex-button" class="secondary-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
+          <div id="codex-activity" class="codex-activity" hidden aria-live="polite">
+            <span class="codex-pulse" aria-hidden="true"></span>
+            <span data-i18n="codexWorking">Codexが回答を生成しています</span>
+          </div>
         </div>
         <div>
           <span class="label" data-i18n="videoId">動画ID</span>
@@ -512,7 +519,6 @@ app.innerHTML = `
         </div>
         <div class="action-buttons">
           <button id="copy-button" type="button" disabled data-i18n="copy">コピー</button>
-          <button id="ask-codex-button" class="secondary-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
         </div>
       </div>
 
@@ -620,6 +626,7 @@ const captionButton = document.querySelector<HTMLButtonElement>("#caption-button
 const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-button")!;
 const copyButton = document.querySelector<HTMLButtonElement>("#copy-button")!;
 const askCodexButton = document.querySelector<HTMLButtonElement>("#ask-codex-button")!;
+const codexActivity = document.querySelector<HTMLDivElement>("#codex-activity")!;
 const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
 const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
 const promptSettingsButton = document.querySelector<HTMLButtonElement>("#prompt-settings-button")!;
@@ -1051,6 +1058,8 @@ function setTranscriptLoading(isLoading: boolean) {
 function setCodexLoading(isLoading: boolean) {
   askCodexButton.disabled = isLoading || !latestTranscript;
   askCodexButton.textContent = isLoading ? t("askCodexLoading") : t("askCodex");
+  askCodexButton.classList.toggle("is-loading", isLoading);
+  codexActivity.hidden = !isLoading;
   if (isLoading) {
     showMessage(t("askingCodex"));
   }
