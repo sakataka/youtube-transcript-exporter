@@ -4,13 +4,37 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
 };
 
 #[derive(Debug)]
 pub struct CodexAppServerError {
     pub message: String,
+}
+
+#[derive(Clone, Default)]
+pub struct CodexRunControl {
+    child: Arc<Mutex<Option<std::process::Child>>>,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl CodexRunControl {
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        if let Ok(mut child) = self.child.lock() {
+            if let Some(child) = child.as_mut() {
+                let _ = child.kill();
+            }
+        }
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
 }
 
 impl From<String> for CodexAppServerError {
@@ -26,6 +50,14 @@ struct TurnOutput {
 }
 
 pub fn ask(prompt: &str, generate_image: bool) -> Result<String, CodexAppServerError> {
+    ask_with_control(prompt, generate_image, CodexRunControl::default())
+}
+
+pub fn ask_with_control(
+    prompt: &str,
+    generate_image: bool,
+    control: CodexRunControl,
+) -> Result<String, CodexAppServerError> {
     if prompt.trim().is_empty() {
         return Err("Codexに渡す質問文が空です。".to_string().into());
     }
@@ -51,6 +83,10 @@ pub fn ask(prompt: &str, generate_image: bool) -> Result<String, CodexAppServerE
         .stderr
         .take()
         .ok_or_else(|| "Codex App Serverのstderrを開けませんでした。".to_string())?;
+
+    if let Ok(mut child_slot) = control.child.lock() {
+        *child_slot = Some(child);
+    }
 
     let stderr_buffer = Arc::new(Mutex::new(String::new()));
     let stderr_for_thread = Arc::clone(&stderr_buffer);
@@ -87,14 +123,24 @@ pub fn ask(prompt: &str, generate_image: bool) -> Result<String, CodexAppServerE
     )?;
 
     let mut reader = BufReader::new(stdout);
-    let thread_id = wait_for_thread_id(&mut reader, &mut child, &stderr_handle)?;
-    let first_turn = run_turn(&mut reader, &mut stdin, 2, &thread_id, prompt)?;
+    let thread_id = wait_for_thread_id(&mut reader, &control, &stderr_handle)?;
+    let first_turn = run_turn(&mut reader, &mut stdin, 2, &thread_id, prompt, &control)?;
+    if control.is_cancelled() {
+        cleanup_child(&control);
+        let _ = stderr_handle.join();
+        return Err("Codexへの質問をキャンセルしました。".to_string().into());
+    }
     let mut final_answer = first_turn.text;
     let mut generated_images = first_turn.images;
 
     if generate_image && !final_answer.trim().is_empty() {
         let image_prompt = build_image_generation_turn_prompt();
-        let image_turn = run_turn(&mut reader, &mut stdin, 3, &thread_id, &image_prompt)?;
+        let image_turn = run_turn(&mut reader, &mut stdin, 3, &thread_id, &image_prompt, &control)?;
+        if control.is_cancelled() {
+            cleanup_child(&control);
+            let _ = stderr_handle.join();
+            return Err("Codexへの質問をキャンセルしました。".to_string().into());
+        }
         if !image_turn.text.trim().is_empty() {
             final_answer.push_str("\n\n## 画像生成メモ\n\n");
             final_answer.push_str(image_turn.text.trim());
@@ -104,8 +150,7 @@ pub fn ask(prompt: &str, generate_image: bool) -> Result<String, CodexAppServerE
 
     drop(stdin);
 
-    let _ = child.kill();
-    let _ = child.wait();
+    cleanup_child(&control);
     let _ = stderr_handle.join();
 
     generated_images.sort();
@@ -140,12 +185,23 @@ pub fn ask(prompt: &str, generate_image: bool) -> Result<String, CodexAppServerE
 
 fn wait_for_thread_id(
     reader: &mut impl BufRead,
-    child: &mut std::process::Child,
+    control: &CodexRunControl,
     stderr_handle: &thread::JoinHandle<()>,
 ) -> Result<String, CodexAppServerError> {
     loop {
-        let message = read_message(reader)?;
-        handle_error_message(&message, child, stderr_handle)?;
+        if control.is_cancelled() {
+            cleanup_child(control);
+            return Err("Codexへの質問をキャンセルしました。".to_string().into());
+        }
+        let message = match read_message(reader) {
+            Ok(message) => message,
+            Err(_) if control.is_cancelled() => {
+                cleanup_child(control);
+                return Err("Codexへの質問をキャンセルしました。".to_string().into());
+            }
+            Err(error) => return Err(error),
+        };
+        handle_error_message(&message, control, stderr_handle)?;
 
         if message.get("id").and_then(Value::as_i64) != Some(1) {
             continue;
@@ -156,8 +212,7 @@ fn wait_for_thread_id(
             .and_then(Value::as_str)
             .map(ToOwned::to_owned)
         else {
-            let _ = child.kill();
-            let _ = child.wait();
+            cleanup_child(control);
             return Err("Codex App Serverからthread idを取得できませんでした。"
                 .to_string()
                 .into());
@@ -173,6 +228,7 @@ fn run_turn(
     request_id: i64,
     thread_id: &str,
     prompt: &str,
+    control: &CodexRunControl,
 ) -> Result<TurnOutput, CodexAppServerError> {
     send(
         stdin,
@@ -192,12 +248,25 @@ fn run_turn(
     let mut generated_images: Vec<String> = Vec::new();
 
     loop {
+        if control.is_cancelled() {
+            cleanup_child(control);
+            return Err("Codexへの質問をキャンセルしました。".to_string().into());
+        }
         line.clear();
-        let bytes = reader
-            .read_line(&mut line)
-            .map_err(|_| "Codex App Serverの応答を読み取れませんでした。".to_string())?;
+        let bytes = reader.read_line(&mut line).map_err(|_| {
+            if control.is_cancelled() {
+                cleanup_child(control);
+                "Codexへの質問をキャンセルしました。".to_string()
+            } else {
+                "Codex App Serverの応答を読み取れませんでした。".to_string()
+            }
+        })?;
 
         if bytes == 0 {
+            if control.is_cancelled() {
+                cleanup_child(control);
+                return Err("Codexへの質問をキャンセルしました。".to_string().into());
+            }
             break;
         }
 
@@ -279,7 +348,7 @@ fn read_message(reader: &mut impl BufRead) -> Result<Value, CodexAppServerError>
 
 fn handle_error_message(
     message: &Value,
-    child: &mut std::process::Child,
+    control: &CodexRunControl,
     stderr_handle: &thread::JoinHandle<()>,
 ) -> Result<(), CodexAppServerError> {
     if let Some(error) = message.get("error") {
@@ -287,13 +356,21 @@ fn handle_error_message(
             .get("message")
             .and_then(Value::as_str)
             .unwrap_or("Codex App Serverでエラーが発生しました。");
-        let _ = child.kill();
-        let _ = child.wait();
+        cleanup_child(control);
         let _ = stderr_handle;
         return Err(error_message.to_string().into());
     }
 
     Ok(())
+}
+
+fn cleanup_child(control: &CodexRunControl) {
+    if let Ok(mut child_slot) = control.child.lock() {
+        if let Some(mut child) = child_slot.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
 }
 
 fn build_image_generation_turn_prompt() -> String {

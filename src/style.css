@@ -565,6 +565,28 @@ input[type="radio"]:focus {
   color: #174a87;
 }
 
+.codex-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid #e2e7ec;
+  padding: 12px 18px;
+  background: #fbfcfd;
+}
+
+.codex-toolbar[hidden] {
+  display: none;
+}
+
+button.danger-button {
+  border-color: #f1b6b1;
+  color: #a92e27;
+}
+
+button.danger-button:hover:not(:disabled) {
+  background: #fff5f4;
+}
+
 textarea {
   display: block;
   width: 100%;
@@ -721,6 +743,78 @@ textarea[hidden] {
   margin: 1.6em 0;
 }
 
+.history-panel {
+  border-top: 1px solid #e2e7ec;
+  padding: 16px 18px 18px;
+  background: #fbfcfd;
+}
+
+.history-panel[hidden] {
+  display: none;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.history-header h3 {
+  margin: 0;
+  color: #17202a;
+  font-size: 1rem;
+}
+
+.history-header span {
+  color: #6b7785;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.history-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: auto;
+  border: 1px solid #dce2e7;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #243447;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.history-item:hover:not(:disabled) {
+  background: #f3f6f8;
+}
+
+.history-item strong,
+.history-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item strong {
+  color: #17202a;
+}
+
+.history-item span,
+.history-empty {
+  color: #6b7785;
+  font-size: 0.9rem;
+}
+
 .settings-backdrop {
   position: fixed;
   inset: 0;
@@ -744,6 +838,28 @@ textarea[hidden] {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 24px 70px rgba(27, 39, 51, 0.24);
+}
+
+.follow-up-panel {
+  width: min(720px, calc(100vw - 32px));
+  border: 1px solid #dce2e7;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(27, 39, 51, 0.24);
+}
+
+.follow-up-body {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+
+.follow-up-question {
+  min-height: 160px;
+  height: 160px;
+  border: 1px solid #cbd3da;
+  border-radius: 6px;
+  background: #fbfcfd;
 }
 
 .settings-header {
@@ -884,6 +1000,7 @@ textarea[hidden] {
 
   .settings-actions,
   .settings-footer,
+  .codex-toolbar,
   .output-tabs,
   .search-result {
     display: grid;
