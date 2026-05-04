@@ -796,7 +796,7 @@ askCodexButton.addEventListener("click", async () => {
   const prompt = buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate(), {
     includeImageInstruction: false
   });
-  latestCodexAnswer = t("askingCodex");
+  latestCodexAnswer = "";
   setOutputMode("codexAnswer");
   setCodexLoading(true);
 
@@ -1065,9 +1065,6 @@ function setCodexLoading(isLoading: boolean) {
   askCodexButton.textContent = isLoading ? t("askCodexLoading") : t("askCodex");
   askCodexButton.classList.toggle("is-loading", isLoading);
   codexActivity.hidden = !isLoading;
-  if (isLoading) {
-    showMessage(t("askingCodex"));
-  }
 }
 
 async function checkCaptionCandidates(url: string) {
