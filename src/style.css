@@ -135,13 +135,34 @@ h1 {
 
 .command-row {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) repeat(7, auto);
+  grid-template-columns: minmax(360px, 1fr) repeat(5, minmax(112px, auto)) auto auto;
   gap: 10px;
   align-items: center;
 }
 
+.command-row button {
+  min-width: 112px;
+  padding-inline: 18px;
+  white-space: nowrap;
+}
+
+.command-row #caption-button,
+.command-row #transcript-button {
+  min-width: 132px;
+}
+
+.command-row #ask-codex-button {
+  min-width: 148px;
+}
+
+.command-row #transcript-search-toggle {
+  min-width: 112px;
+}
+
 .command-row .codex-activity {
-  min-width: 42px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
 }
 
 input,
@@ -196,6 +217,7 @@ input[type="radio"]:focus {
 
 .meta-copy-settings {
   grid-column: span 5;
+  min-width: 0;
 }
 
 .meta-panel strong {
@@ -320,13 +342,18 @@ input[type="radio"]:focus {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
   align-items: center;
+  min-height: 44px;
+  border: 1px solid #dce2e7;
+  border-radius: 6px;
+  background: #fbfcfd;
   color: #243447;
   font-weight: 700;
   line-height: 1.35;
+  padding: 8px 12px;
 }
 
 .option-toggle + .option-toggle {
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 .option-toggle input {
@@ -337,14 +364,16 @@ input[type="radio"]:focus {
 
 .display-mode-control {
   display: grid;
-  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
   margin-top: 10px;
 }
 
 .meta-copy-settings {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, max-content)) minmax(240px, 1fr);
-  gap: 8px 14px;
+  grid-template-columns: minmax(420px, 1fr) minmax(360px, 0.85fr);
+  gap: 8px 16px;
   align-items: start;
 }
 
@@ -352,12 +381,20 @@ input[type="radio"]:focus {
   grid-column: 1 / -1;
 }
 
+.copy-option-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px;
+}
+
 .meta-copy-settings .display-mode-control {
   margin-top: 0;
 }
 
 .display-mode-control .label {
+  align-self: center;
   margin-bottom: 0;
+  white-space: nowrap;
 }
 
 .segmented-control {
@@ -377,8 +414,8 @@ input[type="radio"]:focus {
   color: #243447;
   cursor: pointer;
   font-weight: 700;
-  min-height: 38px;
-  padding: 8px 10px;
+  min-height: 44px;
+  padding: 8px 12px;
 }
 
 .segmented-control label:has(input:checked) {
@@ -1074,7 +1111,8 @@ textarea[hidden] {
   .output-title-row,
   .result-layout,
   .meta-panel,
-  .meta-copy-settings {
+  .meta-copy-settings,
+  .copy-option-row {
     grid-template-columns: 1fr;
   }
 

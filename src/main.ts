@@ -579,14 +579,16 @@ app.innerHTML = `
         </div>
         <div class="meta-copy-settings">
           <span class="label" data-i18n="copyOptions">コピー設定</span>
-          <label class="option-toggle">
-            <input id="include-image-prompt" type="checkbox" />
-            <span data-i18n="includeImagePrompt">画像生成指示を含める</span>
-          </label>
-          <label class="option-toggle">
-            <input id="format-automatic-transcript" type="checkbox" />
-            <span data-i18n="formatAutomaticTranscript">自動字幕を読みやすく整形</span>
-          </label>
+          <div class="copy-option-row">
+            <label class="option-toggle">
+              <input id="include-image-prompt" type="checkbox" />
+              <span data-i18n="includeImagePrompt">画像生成指示を含める</span>
+            </label>
+            <label class="option-toggle">
+              <input id="format-automatic-transcript" type="checkbox" />
+              <span data-i18n="formatAutomaticTranscript">自動字幕を読みやすく整形</span>
+            </label>
+          </div>
           <div class="display-mode-control" role="group" aria-labelledby="transcript-display-mode-label">
             <span class="label" id="transcript-display-mode-label" data-i18n="transcriptDisplayModeLabel">字幕表示</span>
             <div class="segmented-control">
