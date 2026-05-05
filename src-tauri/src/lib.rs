@@ -156,6 +156,16 @@ fn open_youtube_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    validate_external_url(&url)?;
+    Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map_err(|_| "リンクをブラウザで開けませんでした。".to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn ask_codex(prompt: String, generate_image: bool) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || codex_app_server::ask(&prompt, generate_image))
         .await
@@ -350,6 +360,15 @@ fn validate_youtube_url(value: &str) -> Result<(), String> {
     Err("YouTube URLだけを開けます。".to_string())
 }
 
+fn validate_external_url(value: &str) -> Result<(), String> {
+    let url = Url::parse(value).map_err(|_| "URLとして解釈できません。".to_string())?;
+    if matches!(url.scheme(), "http" | "https") && url.host_str().is_some() {
+        return Ok(());
+    }
+
+    Err("httpまたはhttpsのURLだけを開けます。".to_string())
+}
+
 fn format_transcript_error(error: TranscriptError) -> String {
     error.message
 }
@@ -370,6 +389,7 @@ pub fn run() {
             list_captions,
             fetch_transcript,
             open_youtube_url,
+            open_external_url,
             ask_codex,
             start_codex_request,
             get_codex_request,
@@ -385,7 +405,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_youtube_url;
+    use super::{validate_external_url, validate_youtube_url};
 
     #[test]
     fn accepts_youtube_timestamp_urls() {
@@ -396,5 +416,17 @@ mod tests {
     #[test]
     fn rejects_non_youtube_urls() {
         assert!(validate_youtube_url("https://example.com/watch?v=abc&t=42s").is_err());
+    }
+
+    #[test]
+    fn accepts_http_external_urls() {
+        assert!(validate_external_url("https://example.com/reference").is_ok());
+        assert!(validate_external_url("http://example.com/reference").is_ok());
+    }
+
+    #[test]
+    fn rejects_non_http_external_urls() {
+        assert!(validate_external_url("javascript:alert(1)").is_err());
+        assert!(validate_external_url("file:///tmp/reference").is_err());
     }
 }

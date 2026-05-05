@@ -1139,12 +1139,17 @@ codexAnswerOutput.addEventListener("click", async (event) => {
   }
 
   const link = target.closest<HTMLAnchorElement>("a[href]");
-  if (!link || !isYouTubeUrl(link.href)) {
+  if (!link) {
     return;
   }
 
   event.preventDefault();
-  await openTimestampUrl(link.href);
+  if (isYouTubeUrl(link.href)) {
+    await openTimestampUrl(link.href);
+    return;
+  }
+
+  await openExternalUrl(link.href);
 });
 
 outputTabs.forEach((tab) => {
@@ -2703,6 +2708,18 @@ async function openTimestampUrl(url: string | undefined) {
 
   try {
     await invoke("open_youtube_url", { url });
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+async function openExternalUrl(url: string | undefined) {
+  if (!url) {
+    return;
+  }
+
+  try {
+    await invoke("open_external_url", { url });
   } catch {
     window.open(url, "_blank", "noopener,noreferrer");
   }
