@@ -99,17 +99,6 @@ h1 {
   line-height: 1.2;
 }
 
-.status-pill {
-  border: 1px solid #cfd6dd;
-  border-radius: 999px;
-  color: #2d465f;
-  background: #ffffff;
-  font-size: 0.9rem;
-  font-weight: 700;
-  padding: 8px 12px;
-  white-space: nowrap;
-}
-
 .input-panel,
 .output-panel,
 .meta-panel {
@@ -135,7 +124,7 @@ h1 {
 
 .command-row {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) repeat(5, minmax(112px, auto)) auto auto;
+  grid-template-columns: minmax(360px, 1fr) repeat(6, minmax(112px, auto)) auto;
   gap: 10px;
   align-items: center;
 }
@@ -157,6 +146,28 @@ h1 {
 
 .command-row #transcript-search-toggle {
   min-width: 112px;
+}
+
+.command-row #prompt-settings-button {
+  min-width: 112px;
+}
+
+.icon-label-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.button-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .command-row .codex-activity {
@@ -333,10 +344,6 @@ input[type="radio"]:focus {
   font-size: 0.86rem;
 }
 
-#prompt-settings-button {
-  margin-top: 10px;
-}
-
 .option-toggle {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -372,7 +379,7 @@ input[type="radio"]:focus {
 
 .meta-copy-settings {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(360px, 0.85fr);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.8fr);
   gap: 16px;
   align-items: start;
 }
@@ -386,12 +393,13 @@ input[type="radio"]:focus {
 
 .copy-option-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
 .display-mode-control .label {
   margin-bottom: 0;
+  overflow-wrap: anywhere;
 }
 
 .segmented-control {
@@ -413,6 +421,13 @@ input[type="radio"]:focus {
   font-weight: 700;
   min-height: 44px;
   padding: 8px 12px;
+  min-width: 0;
+}
+
+.segmented-control span,
+.option-toggle span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .segmented-control label:has(input:checked) {
@@ -1116,10 +1131,6 @@ textarea[hidden] {
   .meta-prompt-settings,
   .meta-copy-settings {
     grid-column: auto;
-  }
-
-  .command-row .status-pill {
-    justify-self: start;
   }
 
   button {

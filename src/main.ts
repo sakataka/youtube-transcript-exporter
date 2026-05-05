@@ -267,9 +267,9 @@ const uiText = {
     copyOptions: "コピー設定",
     includeImagePrompt: "画像生成指示を含む",
     formatAutomaticTranscript: "自動字幕を整形",
-    transcriptDisplayModeLabel: "字幕表示",
-    plainTranscript: "通常",
-    timestampedTranscript: "タイムスタンプ付き",
+    transcriptDisplayModeLabel: "字幕表示のタイムスタンプ",
+    plainTranscript: "なし",
+    timestampedTranscript: "あり",
     transcriptView: "字幕本文",
     copyPromptView: "コピー用プロンプト",
     codexAnswerView: "AI回答",
@@ -395,9 +395,9 @@ const uiText = {
     copyOptions: "Copy settings",
     includeImagePrompt: "Include image prompt",
     formatAutomaticTranscript: "Clean auto captions",
-    transcriptDisplayModeLabel: "Transcript display",
-    plainTranscript: "Plain",
-    timestampedTranscript: "Timestamped",
+    transcriptDisplayModeLabel: "Transcript timestamps",
+    plainTranscript: "Off",
+    timestampedTranscript: "On",
     transcriptView: "Transcript",
     copyPromptView: "Copy prompt",
     codexAnswerView: "AI answer",
@@ -529,11 +529,23 @@ app.innerHTML = `
         <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
         <button id="ask-codex-button" class="secondary-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
         <button id="copy-button" class="secondary-button" type="button" disabled data-i18n="copy">コピー</button>
-        <button class="secondary-button compact-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel" data-i18n="transcriptSearchToggle">字幕内検索</button>
+        <button class="secondary-button compact-button icon-label-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel">
+          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="6"></circle>
+            <path d="m16 16 4 4"></path>
+          </svg>
+          <span data-i18n="transcriptSearchToggle">検索</span>
+        </button>
         <div id="codex-activity" class="codex-activity" hidden aria-live="polite">
           <span class="codex-pulse" aria-hidden="true"></span>
         </div>
-        <span class="status-pill" id="runtime-status" data-i18n="status">ローカル実行</span>
+        <button class="secondary-button compact-button icon-label-button" id="prompt-settings-button" type="button">
+          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19 12a7 7 0 0 0-.1-1.1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.9-1.1L14.2 3h-4.4l-.4 2.8A7 7 0 0 0 7.5 7L5.1 6l-2 3.5 2 1.5a7 7 0 0 0 0 2.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.9 1.1l.4 2.8h4.4l.4-2.8a7 7 0 0 0 1.9-1.1l2.4 1 2-3.5-2-1.5c.1-.3.1-.7.1-1.1Z"></path>
+          </svg>
+          <span data-i18n="settingsButton">設定</span>
+        </button>
       </div>
     </form>
 
@@ -575,7 +587,6 @@ app.innerHTML = `
           <label class="label" for="prompt-template" data-i18n="copyPrompt">コピープロンプト</label>
           <select id="prompt-template"></select>
           <p class="prompt-description" id="prompt-description"></p>
-          <button class="secondary-button" id="prompt-settings-button" type="button" data-i18n="settingsButton">設定</button>
         </div>
         <div class="meta-copy-settings">
           <div class="copy-options-control">
