@@ -364,21 +364,24 @@ input[type="radio"]:focus {
 
 .display-mode-control {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  margin-top: 10px;
+  grid-template-rows: auto 1fr;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 0;
 }
 
 .meta-copy-settings {
   display: grid;
   grid-template-columns: minmax(420px, 1fr) minmax(360px, 0.85fr);
-  gap: 8px 16px;
+  gap: 16px;
   align-items: start;
 }
 
-.meta-copy-settings > .label {
-  grid-column: 1 / -1;
+.copy-options-control {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 8px;
+  min-width: 0;
 }
 
 .copy-option-row {
@@ -387,14 +390,8 @@ input[type="radio"]:focus {
   gap: 10px;
 }
 
-.meta-copy-settings .display-mode-control {
-  margin-top: 0;
-}
-
 .display-mode-control .label {
-  align-self: center;
   margin-bottom: 0;
-  white-space: nowrap;
 }
 
 .segmented-control {

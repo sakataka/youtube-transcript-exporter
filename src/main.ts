@@ -265,8 +265,8 @@ const uiText = {
     segmentCount: "字幕行数",
     copyPrompt: "コピープロンプト",
     copyOptions: "コピー設定",
-    includeImagePrompt: "画像生成指示を含める",
-    formatAutomaticTranscript: "自動字幕を読みやすく整形",
+    includeImagePrompt: "画像生成指示を含む",
+    formatAutomaticTranscript: "自動字幕を整形",
     transcriptDisplayModeLabel: "字幕表示",
     plainTranscript: "通常",
     timestampedTranscript: "タイムスタンプ付き",
@@ -393,8 +393,8 @@ const uiText = {
     segmentCount: "Segments",
     copyPrompt: "Copy prompt",
     copyOptions: "Copy settings",
-    includeImagePrompt: "Include image generation instructions",
-    formatAutomaticTranscript: "Clean up auto captions",
+    includeImagePrompt: "Include image prompt",
+    formatAutomaticTranscript: "Clean auto captions",
     transcriptDisplayModeLabel: "Transcript display",
     plainTranscript: "Plain",
     timestampedTranscript: "Timestamped",
@@ -578,16 +578,18 @@ app.innerHTML = `
           <button class="secondary-button" id="prompt-settings-button" type="button" data-i18n="settingsButton">設定</button>
         </div>
         <div class="meta-copy-settings">
-          <span class="label" data-i18n="copyOptions">コピー設定</span>
-          <div class="copy-option-row">
-            <label class="option-toggle">
-              <input id="include-image-prompt" type="checkbox" />
-              <span data-i18n="includeImagePrompt">画像生成指示を含める</span>
-            </label>
-            <label class="option-toggle">
-              <input id="format-automatic-transcript" type="checkbox" />
-              <span data-i18n="formatAutomaticTranscript">自動字幕を読みやすく整形</span>
-            </label>
+          <div class="copy-options-control">
+            <span class="label" data-i18n="copyOptions">コピー設定</span>
+            <div class="copy-option-row">
+              <label class="option-toggle">
+                <input id="include-image-prompt" type="checkbox" />
+                <span data-i18n="includeImagePrompt">画像生成指示を含む</span>
+              </label>
+              <label class="option-toggle">
+                <input id="format-automatic-transcript" type="checkbox" />
+                <span data-i18n="formatAutomaticTranscript">自動字幕を整形</span>
+              </label>
+            </div>
           </div>
           <div class="display-mode-control" role="group" aria-labelledby="transcript-display-mode-label">
             <span class="label" id="transcript-display-mode-label" data-i18n="transcriptDisplayModeLabel">字幕表示</span>
