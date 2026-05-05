@@ -252,8 +252,6 @@ const uiText = {
     heading: "YouTube動画をAI向けに整理",
     status: "ローカル実行",
     urlLabel: "YouTube URL",
-    captionButton: "字幕確認",
-    captionButtonLoading: "確認中",
     hint: "自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。",
     videoId: "動画ID",
     selectedLanguage: "選択言語",
@@ -382,8 +380,6 @@ const uiText = {
     heading: "Prepare YouTube Videos for AI",
     status: "Local app",
     urlLabel: "YouTube URL",
-    captionButton: "Check captions",
-    captionButtonLoading: "Checking",
     hint: "Shows only captions and auto captions attached to the video, excluding auto-translated captions.",
     videoId: "Video ID",
     selectedLanguage: "Selected language",
@@ -529,9 +525,8 @@ app.innerHTML = `
           autofocus
           required
         />
-        <button id="caption-button" type="submit" data-i18n="captionButton">字幕を確認</button>
         <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
-        <button id="ask-codex-button" class="secondary-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
+        <button id="ask-codex-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
         <button class="secondary-button compact-button icon-label-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel">
           <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="6"></circle>
@@ -539,9 +534,6 @@ app.innerHTML = `
           </svg>
           <span data-i18n="transcriptSearchToggle">検索</span>
         </button>
-        <div id="codex-activity" class="codex-activity" hidden aria-live="polite">
-          <span class="codex-pulse" aria-hidden="true"></span>
-        </div>
         <button class="secondary-button compact-button icon-label-button" id="prompt-settings-button" type="button">
           <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>
@@ -785,10 +777,8 @@ app.innerHTML = `
 
 const form = document.querySelector<HTMLFormElement>("#caption-form")!;
 const urlInput = document.querySelector<HTMLInputElement>("#youtube-url")!;
-const captionButton = document.querySelector<HTMLButtonElement>("#caption-button")!;
 const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-button")!;
 const askCodexButton = document.querySelector<HTMLButtonElement>("#ask-codex-button")!;
-const codexActivity = document.querySelector<HTMLDivElement>("#codex-activity")!;
 const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
 const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
 const promptSettingsButton = document.querySelector<HTMLButtonElement>("#prompt-settings-button")!;
@@ -874,6 +864,8 @@ let pendingCodexRequest: PendingCodexRequest | null = null;
 let captionRequestToken = 0;
 let transcriptRequestToken = 0;
 let codexRequestToken = 0;
+let captionAutoCheckTimer: number | undefined;
+let lastCaptionCheckUrl = "";
 let isStartingCodexRequest = false;
 let codexPollTimer: number | undefined;
 let codexHistory = loadCodexHistory();
@@ -912,13 +904,10 @@ form.addEventListener("submit", async (event) => {
   await checkCaptionCandidates(url);
 });
 
+urlInput.addEventListener("input", scheduleCaptionAutoCheck);
+
 urlInput.addEventListener("paste", () => {
-  requestAnimationFrame(() => {
-    const url = urlInput.value.trim();
-    if (!captionButton.disabled && isLikelyYoutubeUrl(url)) {
-      void checkCaptionCandidates(url);
-    }
-  });
+  requestAnimationFrame(scheduleCaptionAutoCheck);
 });
 
 captionList.addEventListener("change", (event) => {
@@ -1363,8 +1352,7 @@ function renderCaptionOptions(captions: CaptionOption[]) {
 }
 
 function setCaptionLoading(isLoading: boolean) {
-  captionButton.disabled = isLoading;
-  captionButton.textContent = isLoading ? t("captionButtonLoading") : t("captionButton");
+  urlInput.toggleAttribute("aria-busy", isLoading);
   message.textContent = isLoading ? t("fetchingCaptions") : message.textContent;
 }
 
@@ -1378,7 +1366,6 @@ function setCodexLoading(isLoading: boolean) {
   askCodexButton.disabled = isLoading || (!latestTranscript && !selectedCaption);
   askCodexButton.textContent = isLoading ? t("askCodexLoading") : t("askCodex");
   askCodexButton.classList.toggle("is-loading", isLoading);
-  codexActivity.hidden = !isLoading;
   cancelCodexAnswerButton.hidden = !isLoading;
   renderCodexControls();
 }
@@ -1469,6 +1456,7 @@ function applyTranscriptPayload(payload: TranscriptSuccess, requestedCaption: Ca
 async function checkCaptionCandidates(url: string) {
   const requestToken = (captionRequestToken += 1);
   transcriptRequestToken += 1;
+  lastCaptionCheckUrl = url;
   setCaptionLoading(true);
   clearResult();
 
@@ -1498,11 +1486,29 @@ async function checkCaptionCandidates(url: string) {
     }
 
     showError(formatInvokeError(error, t("listCaptionsFailed")));
+    lastCaptionCheckUrl = "";
   } finally {
     if (requestToken === captionRequestToken) {
       setCaptionLoading(false);
     }
   }
+}
+
+function scheduleCaptionAutoCheck() {
+  if (captionAutoCheckTimer !== undefined) {
+    window.clearTimeout(captionAutoCheckTimer);
+  }
+
+  captionAutoCheckTimer = window.setTimeout(() => {
+    captionAutoCheckTimer = undefined;
+    const url = urlInput.value.trim();
+
+    if (!isLikelyYoutubeUrl(url) || url === lastCaptionCheckUrl) {
+      return;
+    }
+
+    void checkCaptionCandidates(url);
+  }, 450);
 }
 
 function clearResult() {
@@ -3320,6 +3326,7 @@ function focusUrlInput() {
 
 function clearUrlInputOnLaunch() {
   urlInput.value = "";
+  lastCaptionCheckUrl = "";
 }
 
 function isLikelyYoutubeUrl(value: string) {

@@ -141,7 +141,6 @@ h1 {
   white-space: nowrap;
 }
 
-.command-row #caption-button,
 .command-row #transcript-button {
   min-width: 142px;
 }
@@ -156,6 +155,13 @@ h1 {
 
 .command-row #prompt-settings-button {
   min-width: 112px;
+}
+
+button.is-loading:disabled {
+  background: #c9352b;
+  color: #ffffff;
+  cursor: progress;
+  animation: codex-button-pulse 1.45s ease-in-out infinite;
 }
 
 .icon-label-button {
@@ -174,13 +180,6 @@ h1 {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.command-row .codex-activity {
-  flex: 0 0 112px;
-  width: 112px;
-  min-height: 44px;
-  padding: 0;
 }
 
 input,
@@ -265,48 +264,8 @@ input[type="radio"]:focus {
 
 .primary-action button.is-loading {
   animation: codex-button-pulse 1.4s ease-in-out infinite;
-  border-color: #2f80ed;
-  color: #174a87;
-}
-
-.codex-activity {
-  display: grid;
-  place-items: center;
-  align-items: center;
-  border: 1px solid #dce2e7;
-  border-radius: 8px;
-  background: #f8fbff;
-  color: #31506e;
-  font-size: 0.88rem;
-  font-weight: 700;
-  min-height: 40px;
-  padding: 9px 10px;
-}
-
-.codex-activity[hidden] {
-  display: none;
-}
-
-.codex-pulse {
-  position: relative;
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: #2f80ed;
-}
-
-.codex-pulse::before,
-.codex-pulse::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: rgba(47, 128, 237, 0.35);
-  animation: codex-pulse-ring 1.5s ease-out infinite;
-}
-
-.codex-pulse::after {
-  animation-delay: 0.45s;
+  border-color: #c9352b;
+  color: #9f2a24;
 }
 
 .action-buttons {
@@ -314,33 +273,20 @@ input[type="radio"]:focus {
   gap: 10px;
 }
 
-@keyframes codex-pulse-ring {
-  0% {
-    opacity: 0.85;
-    transform: scale(1);
-  }
-
-  100% {
-    opacity: 0;
-    transform: scale(2.8);
-  }
-}
-
 @keyframes codex-button-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 rgba(47, 128, 237, 0);
+    box-shadow: 0 0 0 rgba(201, 53, 43, 0);
   }
 
   50% {
-    box-shadow: 0 0 0 4px rgba(47, 128, 237, 0.14);
+    box-shadow: 0 0 0 5px rgba(201, 53, 43, 0.16);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .primary-action button.is-loading,
-  .codex-pulse::before,
-  .codex-pulse::after {
+  button.is-loading:disabled,
+  .primary-action button.is-loading {
     animation: none;
   }
 }
@@ -1170,8 +1116,7 @@ textarea[hidden] {
     display: grid;
   }
 
-  .command-row #youtube-url,
-  .command-row .codex-activity {
+  .command-row #youtube-url {
     width: 100%;
     min-width: 0;
   }
