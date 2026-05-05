@@ -293,7 +293,6 @@ const uiText = {
     codexHistoryEmpty: "AI回答の履歴はまだありません。",
     codexHistoryRestored: "履歴からAI回答を復元しました。",
     clearCodexHistory: "履歴をクリア",
-    clearCodexHistoryConfirm: "AI回答履歴をすべて削除しますか？",
     codexHistoryCleared: "AI回答履歴を削除しました。",
     copyAnswer: "回答をコピー",
     saveMarkdown: "Markdown保存",
@@ -424,7 +423,6 @@ const uiText = {
     codexHistoryEmpty: "No AI answer history yet.",
     codexHistoryRestored: "Restored an AI answer from history.",
     clearCodexHistory: "Clear history",
-    clearCodexHistoryConfirm: "Delete all AI answer history?",
     codexHistoryCleared: "Cleared AI answer history.",
     copyAnswer: "Copy answer",
     saveMarkdown: "Save Markdown",
@@ -534,7 +532,6 @@ app.innerHTML = `
         <button id="caption-button" type="submit" data-i18n="captionButton">字幕を確認</button>
         <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
         <button id="ask-codex-button" class="secondary-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
-        <button id="copy-button" class="secondary-button" type="button" disabled data-i18n="copy">コピー</button>
         <button class="secondary-button compact-button icon-label-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel">
           <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="6"></circle>
@@ -790,7 +787,6 @@ const form = document.querySelector<HTMLFormElement>("#caption-form")!;
 const urlInput = document.querySelector<HTMLInputElement>("#youtube-url")!;
 const captionButton = document.querySelector<HTMLButtonElement>("#caption-button")!;
 const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-button")!;
-const copyButton = document.querySelector<HTMLButtonElement>("#copy-button")!;
 const askCodexButton = document.querySelector<HTMLButtonElement>("#ask-codex-button")!;
 const codexActivity = document.querySelector<HTMLDivElement>("#codex-activity")!;
 const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
@@ -944,18 +940,6 @@ captionList.addEventListener("change", (event) => {
 
 transcriptButton.addEventListener("click", async () => {
   await fetchSelectedTranscript({ copyAfterFetch: true });
-});
-
-copyButton.addEventListener("click", async () => {
-  if (!latestTranscript) {
-    return;
-  }
-
-  try {
-    await copyTranscriptToClipboard(latestTranscript, getSelectedPromptTemplate());
-  } catch {
-    showMessage(t("copyFailed"), true);
-  }
 });
 
 askCodexButton.addEventListener("click", async () => {
@@ -1478,7 +1462,6 @@ function applyTranscriptPayload(payload: TranscriptSuccess, requestedCaption: Ca
   updateTranscriptCharacterCount();
   updateTranscriptStats();
   renderTranscriptSearch();
-  copyButton.disabled = payload.text.length === 0;
   askCodexButton.disabled = payload.text.length === 0;
   renderOutput();
 }
@@ -1554,7 +1537,6 @@ function clearTranscript() {
   stopCodexPolling();
   charCount.textContent = "0";
   segmentCount.textContent = "0";
-  copyButton.disabled = true;
   askCodexButton.disabled = !selectedCaption;
   transcriptButton.textContent = t("fetchTranscript");
   isTranscriptSearchExpanded = false;
@@ -1568,7 +1550,6 @@ function clearTranscript() {
 function showError(text: string) {
   latestTranscript = null;
   showMessage(text, true);
-  copyButton.disabled = true;
   askCodexButton.disabled = true;
   renderOutput();
 }
@@ -2530,10 +2511,6 @@ function clearCodexHistory() {
     return;
   }
 
-  if (!window.confirm(t("clearCodexHistoryConfirm"))) {
-    return;
-  }
-
   codexHistory = [];
   localStorage.removeItem(codexHistoryStorageKey);
   renderCodexHistory();
@@ -3211,8 +3188,8 @@ function loadAppSettings(): AppSettings {
       : "plain";
     const settings: AppSettings = {
       uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja",
-      includeImagePrompt: parsed.includeImagePrompt !== false,
-      formatAutomaticTranscript: parsed.formatAutomaticTranscript !== false,
+      includeImagePrompt: true,
+      formatAutomaticTranscript: true,
       transcriptDisplayMode,
       markdownThemeCss:
         typeof parsed.markdownThemeCss === "string" && parsed.markdownThemeCss.trim()
@@ -3221,7 +3198,7 @@ function loadAppSettings(): AppSettings {
       completionSoundEnabled: parsed.completionSoundEnabled !== false
     };
 
-    if ("recentUrls" in parsed) {
+    if ("recentUrls" in parsed || parsed.includeImagePrompt !== true || parsed.formatAutomaticTranscript !== true) {
       localStorage.setItem(appSettingsStorageKey, JSON.stringify(settings));
     }
 
