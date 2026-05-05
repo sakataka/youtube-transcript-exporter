@@ -71,7 +71,7 @@ button.compact-button {
 }
 
 .workspace {
-  width: min(1440px, calc(100vw - 32px));
+  width: min(1680px, calc(100vw - 24px));
   margin: 0 auto;
   padding: 18px 0;
 }
@@ -123,13 +123,19 @@ h1 {
 }
 
 .command-row {
-  display: grid;
-  grid-template-columns: minmax(360px, 1fr) repeat(6, minmax(112px, auto)) auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
 
+.command-row #youtube-url {
+  flex: 1 1 520px;
+  min-width: 360px;
+}
+
 .command-row button {
+  flex: 0 0 auto;
   min-width: 112px;
   padding-inline: 18px;
   white-space: nowrap;
@@ -137,11 +143,11 @@ h1 {
 
 .command-row #caption-button,
 .command-row #transcript-button {
-  min-width: 132px;
+  min-width: 142px;
 }
 
 .command-row #ask-codex-button {
-  min-width: 148px;
+  min-width: 174px;
 }
 
 .command-row #transcript-search-toggle {
@@ -171,7 +177,8 @@ h1 {
 }
 
 .command-row .codex-activity {
-  min-width: 44px;
+  flex: 0 0 112px;
+  width: 112px;
   min-height: 44px;
   padding: 0;
 }
@@ -771,6 +778,26 @@ textarea[hidden] {
   font-weight: 800;
 }
 
+.markdown-output ul li:first-child:has(> strong:only-child) {
+  list-style: none;
+  margin: 0.3em 0 0.25em -1.65em;
+  padding-left: 0;
+}
+
+.markdown-output ul li:first-child:has(> strong:only-child) > strong {
+  color: #0f2f4a;
+}
+
+.markdown-output ul li:first-child:has(> strong:only-child) ~ li {
+  margin-left: 0.35em;
+}
+
+.markdown-output ul li:first-child:has(> strong:only-child) ~ li::marker {
+  color: #6d7c8c;
+  content: "– ";
+  font-weight: 700;
+}
+
 .markdown-output blockquote {
   border-left: 4px solid #cbd3da;
   color: #4a5a6a;
@@ -872,10 +899,21 @@ textarea[hidden] {
   font-size: 1rem;
 }
 
+.history-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .history-header span {
   color: #6b7785;
   font-size: 0.9rem;
   font-weight: 700;
+}
+
+#clear-codex-history {
+  min-height: 34px;
+  padding-inline: 10px;
 }
 
 .history-list {
@@ -1126,6 +1164,16 @@ textarea[hidden] {
   .meta-copy-settings,
   .copy-option-row {
     grid-template-columns: 1fr;
+  }
+
+  .command-row {
+    display: grid;
+  }
+
+  .command-row #youtube-url,
+  .command-row .codex-activity {
+    width: 100%;
+    min-width: 0;
   }
 
   .meta-prompt-settings,

@@ -292,6 +292,9 @@ const uiText = {
     codexHistoryTitle: "AI回答履歴",
     codexHistoryEmpty: "AI回答の履歴はまだありません。",
     codexHistoryRestored: "履歴からAI回答を復元しました。",
+    clearCodexHistory: "履歴をクリア",
+    clearCodexHistoryConfirm: "AI回答履歴をすべて削除しますか？",
+    codexHistoryCleared: "AI回答履歴を削除しました。",
     copyAnswer: "回答をコピー",
     saveMarkdown: "Markdown保存",
     rerunAnswer: "再実行",
@@ -420,6 +423,9 @@ const uiText = {
     codexHistoryTitle: "AI answer history",
     codexHistoryEmpty: "No AI answer history yet.",
     codexHistoryRestored: "Restored an AI answer from history.",
+    clearCodexHistory: "Clear history",
+    clearCodexHistoryConfirm: "Delete all AI answer history?",
+    codexHistoryCleared: "Cleared AI answer history.",
     copyAnswer: "Copy answer",
     saveMarkdown: "Save Markdown",
     rerunAnswer: "Rerun",
@@ -661,7 +667,10 @@ app.innerHTML = `
         <section class="history-panel" id="codex-history-panel" hidden>
           <div class="history-header">
             <h3 data-i18n="codexHistoryTitle">AI回答履歴</h3>
-            <span id="codex-history-count">0</span>
+            <div class="history-header-actions">
+              <span id="codex-history-count">0</span>
+              <button class="secondary-button compact-button" id="clear-codex-history" type="button" data-i18n="clearCodexHistory">履歴をクリア</button>
+            </div>
           </div>
           <div class="history-list" id="codex-history-list"></div>
         </section>
@@ -848,6 +857,7 @@ const cancelCodexAnswerButton = document.querySelector<HTMLButtonElement>("#canc
 const codexHistoryPanel = document.querySelector<HTMLElement>("#codex-history-panel")!;
 const codexHistoryList = document.querySelector<HTMLDivElement>("#codex-history-list")!;
 const codexHistoryCount = document.querySelector<HTMLElement>("#codex-history-count")!;
+const clearCodexHistoryButton = document.querySelector<HTMLButtonElement>("#clear-codex-history")!;
 const followUpModal = document.querySelector<HTMLDivElement>("#follow-up-modal")!;
 const followUpQuestion = document.querySelector<HTMLTextAreaElement>("#follow-up-question")!;
 const followUpClose = document.querySelector<HTMLButtonElement>("#follow-up-close")!;
@@ -1195,6 +1205,10 @@ codexHistoryList.addEventListener("click", (event) => {
   }
 
   restoreCodexHistoryEntry(item.dataset.historyId);
+});
+
+clearCodexHistoryButton.addEventListener("click", () => {
+  clearCodexHistory();
 });
 
 document.addEventListener("keydown", (event) => {
@@ -2185,7 +2199,6 @@ function handleCodexJobStatus(status: CodexJobStatus, token: number) {
     latestCodexAnswerContext = completedRequest.answerContext;
     saveCodexHistoryEntry(completedRequest, status.answer);
     renderOutput();
-    showMessage(t("codexAnswerReady"));
     playCompletionSound();
     return;
   }
@@ -2505,6 +2518,21 @@ function restoreCodexHistoryEntry(historyId: string | undefined) {
   setOutputMode("codexAnswer");
   renderOutput();
   showMessage(t("codexHistoryRestored"));
+}
+
+function clearCodexHistory() {
+  if (codexHistory.length === 0) {
+    return;
+  }
+
+  if (!window.confirm(t("clearCodexHistoryConfirm"))) {
+    return;
+  }
+
+  codexHistory = [];
+  localStorage.removeItem(codexHistoryStorageKey);
+  renderCodexHistory();
+  showMessage(t("codexHistoryCleared"));
 }
 
 function getTranscriptAnswerContext(transcript: TranscriptSuccess): CodexAnswerContext {
