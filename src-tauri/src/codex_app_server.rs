@@ -130,6 +130,9 @@ pub fn ask_with_control(
                     "name": "youtube_ai_brief",
                     "title": "YouTube AI Brief",
                     "version": env!("CARGO_PKG_VERSION")
+                },
+                "capabilities": {
+                    "experimentalApi": true
                 }
             }
         }),
@@ -459,6 +462,8 @@ fn cleanup_child(control: &CodexRunControl) {
 
 fn build_image_generation_turn_prompt() -> String {
     [
+        "$imagegen",
+        "",
         "上記の文章回答をもとに、動画内容を1枚の日本語インフォグラフィック画像として生成してください。",
         "",
         "要件:",
@@ -529,14 +534,6 @@ fn extract_image_generation_markdown(message: &Value) -> Option<String> {
         return None;
     }
 
-    let status = item
-        .get("status")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    if status != "completed" {
-        return None;
-    }
-
     if let Some(result) = item.get("result").and_then(Value::as_str) {
         if let Some(markdown) = image_result_to_markdown(result) {
             return Some(markdown);
@@ -551,14 +548,6 @@ fn extract_image_generation_markdown(message: &Value) -> Option<String> {
 fn extract_raw_image_generation_markdown(message: &Value) -> Option<String> {
     let item = message.pointer("/params/item")?;
     if item.get("type").and_then(Value::as_str) != Some("image_generation_call") {
-        return None;
-    }
-
-    let status = item
-        .get("status")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    if status != "completed" {
         return None;
     }
 
@@ -599,7 +588,8 @@ fn is_likely_base64_image(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_completed_agent_message, extract_delta, extract_raw_image_generation_markdown,
+        extract_completed_agent_message, extract_delta, extract_image_generation_markdown,
+        extract_raw_image_generation_markdown,
     };
     use serde_json::json;
 
@@ -646,6 +636,25 @@ mod tests {
         });
 
         let markdown = extract_raw_image_generation_markdown(&message).unwrap();
+        assert!(markdown.starts_with("![生成画像](data:image/png;base64,"));
+    }
+
+    #[test]
+    fn extracts_app_server_image_generation_even_when_status_is_generating() {
+        let message = json!({
+            "method": "item/completed",
+            "params": {
+                "item": {
+                    "type": "imageGeneration",
+                    "id": "img_1",
+                    "status": "generating",
+                    "result": "b".repeat(160),
+                    "savedPath": "/Users/example/.codex/generated_images/thread/image.png"
+                }
+            }
+        });
+
+        let markdown = extract_image_generation_markdown(&message).unwrap();
         assert!(markdown.starts_with("![生成画像](data:image/png;base64,"));
     }
 }

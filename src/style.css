@@ -73,22 +73,7 @@ button.compact-button {
 .workspace {
   width: min(1440px, calc(100vw - 32px));
   margin: 0 auto;
-  padding: 32px 0;
-}
-
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 14px;
-}
-
-.topbar > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
+  padding: 18px 0;
 }
 
 .eyebrow {
@@ -148,10 +133,15 @@ h1 {
   margin-bottom: 8px;
 }
 
-.url-row {
+.command-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(260px, 1fr) repeat(7, auto);
   gap: 10px;
+  align-items: center;
+}
+
+.command-row .codex-activity {
+  min-width: 42px;
 }
 
 input,
@@ -184,15 +174,28 @@ input[type="radio"]:focus {
 
 .result-layout {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
 }
 
 .meta-panel {
   display: grid;
-  gap: 18px;
-  padding: 18px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 12px;
+}
+
+.meta-summary-item {
+  min-width: 0;
+}
+
+.meta-prompt-settings {
+  grid-column: span 3;
+}
+
+.meta-copy-settings {
+  grid-column: span 5;
 }
 
 .meta-panel strong {
@@ -310,7 +313,6 @@ input[type="radio"]:focus {
 
 #prompt-settings-button {
   margin-top: 10px;
-  width: 100%;
 }
 
 .option-toggle {
@@ -336,7 +338,22 @@ input[type="radio"]:focus {
 .display-mode-control {
   display: grid;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 10px;
+}
+
+.meta-copy-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content)) minmax(240px, 1fr);
+  gap: 8px 14px;
+  align-items: start;
+}
+
+.meta-copy-settings > .label {
+  grid-column: 1 / -1;
+}
+
+.meta-copy-settings .display-mode-control {
+  margin-top: 0;
 }
 
 .display-mode-control .label {
@@ -345,7 +362,7 @@ input[type="radio"]:focus {
 
 .segmented-control {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -377,13 +394,13 @@ input[type="radio"]:focus {
 }
 
 .output-panel {
-  min-height: 620px;
-  overflow: hidden;
+  min-height: 0;
+  overflow: visible;
 }
 
 .output-header {
   border-bottom: 1px solid #e2e7ec;
-  padding: 18px;
+  padding: 14px 18px;
 }
 
 .output-title-row {
@@ -514,9 +531,8 @@ input[type="radio"]:focus {
 .search-results {
   display: grid;
   gap: 10px;
-  max-height: 260px;
   margin-top: 12px;
-  overflow: auto;
+  overflow: visible;
 }
 
 .search-result {
@@ -582,7 +598,7 @@ input[type="radio"]:focus {
 
 .codex-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   border-bottom: 1px solid #e2e7ec;
   padding: 12px 18px;
@@ -605,8 +621,10 @@ button.danger-button:hover:not(:disabled) {
 textarea {
   display: block;
   width: 100%;
-  height: 560px;
-  resize: vertical;
+  min-height: min(68vh, 720px);
+  height: auto;
+  resize: none;
+  overflow: hidden;
   border: 0;
   padding: 18px;
   color: #17202a;
@@ -620,8 +638,7 @@ textarea[hidden] {
 
 .markdown-output {
   min-height: 640px;
-  max-height: 860px;
-  overflow: auto;
+  overflow: visible;
   padding: 22px;
   color: #17202a;
   background: #ffffff;
@@ -815,8 +832,7 @@ textarea[hidden] {
 .history-list {
   display: grid;
   gap: 8px;
-  max-height: 220px;
-  overflow: auto;
+  overflow: visible;
 }
 
 .history-item {
@@ -1054,16 +1070,21 @@ textarea[hidden] {
     padding: 18px 0;
   }
 
-  .topbar,
-  .url-row,
+  .command-row,
   .output-title-row,
-  .result-layout {
+  .result-layout,
+  .meta-panel,
+  .meta-copy-settings {
     grid-template-columns: 1fr;
   }
 
-  .topbar {
-    display: grid;
-    align-items: start;
+  .meta-prompt-settings,
+  .meta-copy-settings {
+    grid-column: auto;
+  }
+
+  .command-row .status-pill {
+    justify-self: start;
   }
 
   button {
@@ -1075,12 +1096,11 @@ textarea[hidden] {
   }
 
   textarea {
-    height: 460px;
+    min-height: 460px;
   }
 
   .markdown-output {
     min-height: 520px;
-    max-height: 680px;
   }
 
   .settings-section {

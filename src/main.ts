@@ -252,7 +252,7 @@ const uiText = {
     heading: "YouTube動画をAI向けに整理",
     status: "ローカル実行",
     urlLabel: "YouTube URL",
-    captionButton: "字幕を確認",
+    captionButton: "字幕確認",
     captionButtonLoading: "確認中",
     hint: "自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。",
     videoId: "動画ID",
@@ -274,7 +274,7 @@ const uiText = {
     copyPromptView: "コピー用プロンプト",
     codexAnswerView: "AI回答",
     transcriptSearchTitle: "字幕内検索",
-    transcriptSearchToggle: "字幕内検索",
+    transcriptSearchToggle: "検索",
     transcriptSearchLabel: "検索語",
     transcriptSearchPlaceholder: "字幕を検索",
     transcriptSearchDisabled: "字幕取得後に検索できます。",
@@ -283,10 +283,10 @@ const uiText = {
     transcriptSearchCount: (count: number) => `${count.toLocaleString("ja-JP")}件一致`,
     openTimestamp: "YouTubeで開く",
     settingsButton: "設定",
-    fetchTranscript: "選択した字幕を取得",
+    fetchTranscript: "字幕を取得",
     fetchTranscriptLoading: "取得中",
     copy: "コピー",
-    askCodex: "字幕を取得して生成AIに聞く",
+    askCodex: "AIに聞く",
     askCodexLoading: "取得・質問中",
     codexWorking: "Codexが回答を生成しています",
     codexHistoryTitle: "AI回答履歴",
@@ -402,7 +402,7 @@ const uiText = {
     copyPromptView: "Copy prompt",
     codexAnswerView: "AI answer",
     transcriptSearchTitle: "Search transcript",
-    transcriptSearchToggle: "Search transcript",
+    transcriptSearchToggle: "Search",
     transcriptSearchLabel: "Search term",
     transcriptSearchPlaceholder: "Search transcript",
     transcriptSearchDisabled: "Search is available after fetching a transcript.",
@@ -411,10 +411,10 @@ const uiText = {
     transcriptSearchCount: (count: number) => `${count.toLocaleString("en-US")} match${count === 1 ? "" : "es"}`,
     openTimestamp: "Open in YouTube",
     settingsButton: "Settings",
-    fetchTranscript: "Get selected caption",
+    fetchTranscript: "Fetch",
     fetchTranscriptLoading: "Getting",
     copy: "Copy",
-    askCodex: "Get caption and ask AI",
+    askCodex: "Ask AI",
     askCodexLoading: "Getting and asking",
     codexWorking: "Codex is generating an answer",
     codexHistoryTitle: "AI answer history",
@@ -513,16 +513,8 @@ if (!app) {
 
 app.innerHTML = `
   <section class="workspace">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow" data-i18n="eyebrow">YouTube to AI prompt tool</p>
-        <h1 data-i18n="heading">YouTube動画をAI向けに整理</h1>
-      </div>
-      <span class="status-pill" id="runtime-status" data-i18n="status">ローカル実行</span>
-    </header>
-
     <form class="input-panel" id="caption-form">
-      <div class="url-row">
+      <div class="command-row">
         <input
           id="youtube-url"
           name="url"
@@ -534,57 +526,58 @@ app.innerHTML = `
           required
         />
         <button id="caption-button" type="submit" data-i18n="captionButton">字幕を確認</button>
+        <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
+        <button id="ask-codex-button" class="secondary-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
+        <button id="copy-button" class="secondary-button" type="button" disabled data-i18n="copy">コピー</button>
+        <button class="secondary-button compact-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel" data-i18n="transcriptSearchToggle">字幕内検索</button>
+        <div id="codex-activity" class="codex-activity" hidden aria-live="polite">
+          <span class="codex-pulse" aria-hidden="true"></span>
+        </div>
+        <span class="status-pill" id="runtime-status" data-i18n="status">ローカル実行</span>
       </div>
     </form>
 
     <section class="result-layout" aria-live="polite">
       <div class="meta-panel">
-        <div class="primary-action">
-          <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
-          <button id="ask-codex-button" class="secondary-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
-          <div id="codex-activity" class="codex-activity" hidden aria-live="polite">
-            <span class="codex-pulse" aria-hidden="true"></span>
-          </div>
-        </div>
-        <div>
+        <div class="meta-summary-item">
           <span class="label" data-i18n="videoId">動画ID</span>
           <strong id="video-id">-</strong>
         </div>
-        <div>
+        <div class="meta-summary-item">
           <span class="label" data-i18n="selectedLanguage">選択言語</span>
           <strong id="language">-</strong>
         </div>
-        <div>
+        <div class="meta-summary-item">
           <span class="label" data-i18n="characterCount">文字数</span>
           <strong id="char-count">0</strong>
         </div>
-        <div>
+        <div class="meta-summary-item">
           <span class="label" data-i18n="videoDuration">動画時間</span>
           <strong id="video-duration">-</strong>
         </div>
-        <div>
+        <div class="meta-summary-item">
           <span class="label" data-i18n="canonicalUrl">動画URL</span>
           <strong id="canonical-url">-</strong>
         </div>
-        <div>
+        <div class="meta-summary-item">
           <span class="label" data-i18n="viewCount">再生数</span>
           <strong id="view-count">-</strong>
         </div>
-        <div>
+        <div class="meta-summary-item">
           <span class="label" data-i18n="captionSourceLabel">字幕種別</span>
           <strong id="caption-source">-</strong>
         </div>
-        <div>
+        <div class="meta-summary-item">
           <span class="label" data-i18n="segmentCount">字幕行数</span>
           <strong id="segment-count">0</strong>
         </div>
-        <div>
+        <div class="meta-prompt-settings">
           <label class="label" for="prompt-template" data-i18n="copyPrompt">コピープロンプト</label>
           <select id="prompt-template"></select>
           <p class="prompt-description" id="prompt-description"></p>
           <button class="secondary-button" id="prompt-settings-button" type="button" data-i18n="settingsButton">設定</button>
         </div>
-        <div>
+        <div class="meta-copy-settings">
           <span class="label" data-i18n="copyOptions">コピー設定</span>
           <label class="option-toggle">
             <input id="include-image-prompt" type="checkbox" />
@@ -608,9 +601,6 @@ app.innerHTML = `
             </div>
           </div>
         </div>
-        <div class="action-buttons">
-          <button id="copy-button" type="button" disabled data-i18n="copy">コピー</button>
-        </div>
       </div>
 
       <div class="output-panel">
@@ -620,7 +610,6 @@ app.innerHTML = `
               <h2 id="video-title">AI向け入力</h2>
               <p id="message" data-i18n="initialMessage">URLを入力して字幕候補を確認してください。</p>
             </div>
-            <button class="secondary-button compact-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel" data-i18n="transcriptSearchToggle">字幕内検索</button>
           </div>
         </div>
         <section class="caption-panel" id="caption-panel" hidden>
@@ -646,7 +635,7 @@ app.innerHTML = `
         </div>
         <div class="codex-toolbar" id="codex-toolbar" hidden>
           <button class="secondary-button compact-button" id="copy-codex-answer" type="button" data-i18n="copyAnswer">回答をコピー</button>
-          <button class="secondary-button compact-button" id="save-codex-markdown" type="button" data-i18n="saveMarkdown">Markdown保存</button>
+          <button class="secondary-button compact-button" id="save-codex-markdown" type="button" data-i18n="saveMarkdown" hidden>Markdown保存</button>
           <button class="secondary-button compact-button" id="rerun-codex-answer" type="button" data-i18n="rerunAnswer">再実行</button>
           <button class="secondary-button compact-button" id="follow-up-codex-answer" type="button" data-i18n="followUpAnswer">追加質問</button>
           <button class="secondary-button compact-button" id="ask-selection-codex" type="button" data-i18n="askSelection">選択範囲で質問</button>
@@ -726,9 +715,11 @@ app.innerHTML = `
                 <span data-i18n="completionSound">AI回答の完了時に音を鳴らす</span>
               </label>
 
-              <label class="label" for="settings-markdown-theme-css" data-i18n="markdownThemeCss">Markdown表示CSS</label>
-              <textarea id="settings-markdown-theme-css" class="settings-markdown-theme-css" spellcheck="false"></textarea>
-              <p class="hint" data-i18n="markdownThemeCssDescription">AI回答タブのMarkdown表示だけに適用するCSSです。\`.markdown-output\` から始まるセレクタで見出し、色、フォント、背景を調整できます。</p>
+              <div class="markdown-theme-settings" hidden>
+                <label class="label" for="settings-markdown-theme-css" data-i18n="markdownThemeCss">Markdown表示CSS</label>
+                <textarea id="settings-markdown-theme-css" class="settings-markdown-theme-css" spellcheck="false"></textarea>
+                <p class="hint" data-i18n="markdownThemeCssDescription">AI回答タブのMarkdown表示だけに適用するCSSです。\`.markdown-output\` から始まるセレクタで見出し、色、フォント、背景を調整できます。</p>
+              </div>
 
               <div class="debug-log-settings">
                 <span class="label" data-i18n="debugLog">デバッグログ</span>
@@ -742,7 +733,7 @@ app.innerHTML = `
               </div>
 
               <div class="settings-footer">
-                <button class="secondary-button" id="settings-reset-markdown-theme" type="button" data-i18n="resetMarkdownTheme">初期CSSに戻す</button>
+                <button class="secondary-button" id="settings-reset-markdown-theme" type="button" data-i18n="resetMarkdownTheme" hidden>初期CSSに戻す</button>
                 <button id="settings-save-display" type="button" data-i18n="save">保存</button>
               </div>
             </div>
@@ -869,6 +860,7 @@ let outputMode: CodexOutputMode = "transcript";
 let isTranscriptSearchExpanded = false;
 let latestSelectedOutputText = "";
 let completionAudioContext: AudioContext | null = null;
+let completionAudioPrimed = false;
 let elementToRestoreFocus: HTMLElement | null = null;
 let followUpContext: { kind: CodexQuestionKind; selectedExcerpt: string } | null = null;
 
@@ -883,6 +875,9 @@ renderCodexHistory();
 applyUiLanguage();
 focusUrlInput();
 window.addEventListener("load", focusUrlInput);
+window.addEventListener("resize", resizeTextOutput);
+window.addEventListener("pointerdown", primeCompletionAudio, { capture: true });
+window.addEventListener("keydown", primeCompletionAudio, { capture: true });
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1284,11 +1279,13 @@ settingsSaveTemplate.addEventListener("click", () => {
 settingsSaveDisplay.addEventListener("click", () => {
   appSettings.uiLanguage = settingsUiLanguage.value === "en" ? "en" : "ja";
   appSettings.completionSoundEnabled = settingsCompletionSound.checked;
+  completionAudioPrimed = false;
   appSettings.markdownThemeCss = settingsMarkdownThemeCss.value;
   saveAppSettings();
   applyMarkdownTheme();
   applyUiLanguage();
   renderPromptSettingsList(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
+  primeCompletionAudio();
   showMessage(t("displaySaved"));
 });
 
@@ -1661,6 +1658,7 @@ function renderOutput() {
   if (!latestTranscript) {
     output.value = "";
     codexAnswerOutput.innerHTML = isMarkdownOutput ? renderMarkdown(latestCodexAnswer) : "";
+    resizeTextOutput();
     renderCodexControls();
     logRenderOutput(renderStartedAt);
     return;
@@ -1669,6 +1667,7 @@ function renderOutput() {
   if (outputMode === "copyPrompt") {
     output.value = buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate());
     codexAnswerOutput.innerHTML = "";
+    resizeTextOutput();
     logRenderOutput(renderStartedAt);
     return;
   }
@@ -1676,6 +1675,7 @@ function renderOutput() {
   if (outputMode === "codexAnswer") {
     output.value = "";
     codexAnswerOutput.innerHTML = renderMarkdown(latestCodexAnswer);
+    resizeTextOutput();
     renderCodexControls();
     logRenderOutput(renderStartedAt);
     return;
@@ -1683,8 +1683,18 @@ function renderOutput() {
 
   codexAnswerOutput.innerHTML = "";
   output.value = getTranscriptTextForDisplay(latestTranscript);
+  resizeTextOutput();
   renderCodexControls();
   logRenderOutput(renderStartedAt);
+}
+
+function resizeTextOutput() {
+  if (output.hidden) {
+    return;
+  }
+
+  output.style.height = "auto";
+  output.style.height = `${output.scrollHeight}px`;
 }
 
 function logRenderOutput(renderStartedAt: number) {
@@ -1717,12 +1727,12 @@ function renderMarkdown(markdown: string) {
 
   const flushList = () => {
     if (listItems.length > 0) {
-      blocks.push(`<ul>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ul>`);
+      blocks.push(`<ul>${listItems.map((item) => `<li>${renderListItemMarkdown(item)}</li>`).join("")}</ul>`);
       listItems = [];
     }
 
     if (orderedListItems.length > 0) {
-      blocks.push(`<ol>${orderedListItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ol>`);
+      blocks.push(`<ol>${orderedListItems.map((item) => `<li>${renderListItemMarkdown(item)}</li>`).join("")}</ol>`);
       orderedListItems = [];
     }
   };
@@ -1838,9 +1848,17 @@ function renderMarkdown(markdown: string) {
       continue;
     }
 
-    flushList();
     flushBlockquote();
     flushTable();
+    if (listItems.length > 0) {
+      listItems[listItems.length - 1] = `${listItems[listItems.length - 1]}\n${trimmed}`;
+      continue;
+    }
+    if (orderedListItems.length > 0) {
+      orderedListItems[orderedListItems.length - 1] = `${orderedListItems[orderedListItems.length - 1]}\n${trimmed}`;
+      continue;
+    }
+    flushList();
     paragraph.push(trimmed);
   }
 
@@ -1850,6 +1868,13 @@ function renderMarkdown(markdown: string) {
   flushOpenBlocks();
 
   return blocks.join("");
+}
+
+function renderListItemMarkdown(text: string) {
+  return text
+    .split("\n")
+    .map((line) => renderInlineMarkdown(line))
+    .join("<br />");
 }
 
 function normalizeMarkdownForDisplay(markdown: string) {
@@ -2050,6 +2075,7 @@ async function startCodexRequest(
     return;
   }
 
+  primeCompletionAudio();
   stopCodexPolling();
   const token = codexRequestToken + 1;
   codexRequestToken = token;
@@ -2991,14 +3017,11 @@ function playCompletionSound() {
     return;
   }
 
-  const AudioContextConstructor =
-    window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextConstructor) {
+  const audioContext = getCompletionAudioContext();
+  if (!audioContext) {
     return;
   }
 
-  const audioContext = completionAudioContext ?? new AudioContextConstructor();
-  completionAudioContext = audioContext;
   const play = () => {
     const now = audioContext.currentTime;
     playCompletionTone(audioContext, now, 660, 0.055);
@@ -3006,10 +3029,58 @@ function playCompletionSound() {
   };
 
   if (audioContext.state === "suspended") {
-    void audioContext.resume().then(play).catch(() => {});
+    void audioContext
+      .resume()
+      .then(play)
+      .catch((error) => {
+        appendDebugLog("frontend.completion_sound.failed", {
+          reason: "resume",
+          message: error instanceof Error ? error.message : String(error)
+        });
+      });
   } else {
     play();
   }
+}
+
+function primeCompletionAudio() {
+  if (!appSettings.completionSoundEnabled || completionAudioPrimed) {
+    return;
+  }
+
+  const audioContext = getCompletionAudioContext();
+  if (!audioContext) {
+    return;
+  }
+
+  if (audioContext.state === "suspended") {
+    void audioContext
+      .resume()
+      .then(() => {
+        completionAudioPrimed = audioContext.state === "running";
+      })
+      .catch((error) => {
+        appendDebugLog("frontend.completion_sound.prime_failed", {
+          reason: "resume",
+          message: error instanceof Error ? error.message : String(error)
+        });
+      });
+    return;
+  }
+
+  completionAudioPrimed = true;
+}
+
+function getCompletionAudioContext() {
+  const AudioContextConstructor =
+    window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextConstructor) {
+    return null;
+  }
+
+  const audioContext = completionAudioContext ?? new AudioContextConstructor();
+  completionAudioContext = audioContext;
+  return audioContext;
 }
 
 function playCompletionTone(audioContext: AudioContext, startAt: number, frequency: number, duration: number) {
