@@ -188,10 +188,6 @@ pub fn ask_with_control(
             let _ = stderr_handle.join();
             return Err("Codexへの質問をキャンセルしました。".to_string().into());
         }
-        if !image_turn.text.trim().is_empty() {
-            final_answer.push_str("\n\n## 画像生成メモ\n\n");
-            final_answer.push_str(image_turn.text.trim());
-        }
         generated_images.extend(image_turn.images);
     }
 
