@@ -547,6 +547,7 @@ app.innerHTML = `
           <span data-i18n="settingsButton">設定</span>
         </button>
       </div>
+      <p class="status-message" id="message" hidden></p>
     </form>
 
     <section class="result-layout" aria-live="polite">
@@ -619,14 +620,7 @@ app.innerHTML = `
       </div>
 
       <div class="output-panel">
-        <div class="output-header">
-          <div class="output-title-row">
-            <div>
-              <h2 id="video-title">AI向け入力</h2>
-              <p id="message" data-i18n="initialMessage">URLを入力して字幕候補を確認してください。</p>
-            </div>
-          </div>
-        </div>
+        <h2 id="video-title" hidden>AI向け入力</h2>
         <section class="caption-panel" id="caption-panel" hidden>
           <div class="caption-panel-header">
             <h3 data-i18n="captionsTitle">取得可能な字幕</h3>
@@ -647,14 +641,15 @@ app.innerHTML = `
           <button class="output-tab is-active" id="transcript-view-tab" type="button" data-output-mode="transcript" role="tab" aria-selected="true" aria-controls="transcript-output" data-i18n="transcriptView">字幕本文</button>
           <button class="output-tab" id="copy-prompt-view-tab" type="button" data-output-mode="copyPrompt" role="tab" aria-selected="false" aria-controls="transcript-output" data-i18n="copyPromptView">コピー用プロンプト</button>
           <button class="output-tab" id="codex-answer-view-tab" type="button" data-output-mode="codexAnswer" role="tab" aria-selected="false" aria-controls="transcript-output" data-i18n="codexAnswerView">AI回答</button>
-        </div>
-        <div class="codex-toolbar" id="codex-toolbar" hidden>
-          <button class="secondary-button compact-button" id="copy-codex-answer" type="button" data-i18n="copyAnswer">回答をコピー</button>
-          <button class="secondary-button compact-button" id="save-codex-markdown" type="button" data-i18n="saveMarkdown" hidden>Markdown保存</button>
-          <button class="secondary-button compact-button" id="rerun-codex-answer" type="button" data-i18n="rerunAnswer">再実行</button>
-          <button class="secondary-button compact-button" id="follow-up-codex-answer" type="button" data-i18n="followUpAnswer">追加質問</button>
-          <button class="secondary-button compact-button" id="ask-selection-codex" type="button" data-i18n="askSelection">選択範囲で質問</button>
-          <button class="secondary-button compact-button danger-button" id="cancel-codex-answer" type="button" data-i18n="cancelCodex" hidden>キャンセル</button>
+          <span class="output-tab-divider" aria-hidden="true"></span>
+          <div class="codex-toolbar" id="codex-toolbar" hidden>
+            <button class="secondary-button compact-button" id="copy-codex-answer" type="button" data-i18n="copyAnswer">回答をコピー</button>
+            <button class="secondary-button compact-button" id="save-codex-markdown" type="button" data-i18n="saveMarkdown" hidden>Markdown保存</button>
+            <button class="secondary-button compact-button" id="rerun-codex-answer" type="button" data-i18n="rerunAnswer">再実行</button>
+            <button class="secondary-button compact-button" id="follow-up-codex-answer" type="button" data-i18n="followUpAnswer">追加質問</button>
+            <button class="secondary-button compact-button" id="ask-selection-codex" type="button" data-i18n="askSelection">選択範囲で質問</button>
+            <button class="secondary-button compact-button danger-button" id="cancel-codex-answer" type="button" data-i18n="cancelCodex" hidden>キャンセル</button>
+          </div>
         </div>
         <textarea id="transcript-output" spellcheck="false" readonly></textarea>
         <div id="codex-answer-output" class="markdown-output" hidden></div>
@@ -838,6 +833,7 @@ const transcriptSearchToggle = document.querySelector<HTMLButtonElement>("#trans
 const transcriptSearchInput = document.querySelector<HTMLInputElement>("#transcript-search")!;
 const transcriptSearchCount = document.querySelector<HTMLElement>("#transcript-search-count")!;
 const transcriptSearchResults = document.querySelector<HTMLDivElement>("#transcript-search-results")!;
+const outputTabDivider = document.querySelector<HTMLSpanElement>(".output-tab-divider")!;
 const codexToolbar = document.querySelector<HTMLDivElement>("#codex-toolbar")!;
 const copyCodexAnswerButton = document.querySelector<HTMLButtonElement>("#copy-codex-answer")!;
 const saveCodexMarkdownButton = document.querySelector<HTMLButtonElement>("#save-codex-markdown")!;
@@ -1358,13 +1354,12 @@ function renderCaptionOptions(captions: CaptionOption[]) {
 
 function setCaptionLoading(isLoading: boolean) {
   urlInput.toggleAttribute("aria-busy", isLoading);
-  message.textContent = isLoading ? t("fetchingCaptions") : message.textContent;
 }
 
 function setTranscriptLoading(isLoading: boolean) {
   transcriptButton.disabled = isLoading || !selectedCaption;
   transcriptButton.textContent = isLoading ? t("fetchTranscriptLoading") : t("fetchTranscript");
-  message.textContent = isLoading ? t("fetchingTranscript") : message.textContent;
+  transcriptButton.classList.toggle("is-loading", isLoading);
 }
 
 function setCodexLoading(isLoading: boolean) {
@@ -1531,8 +1526,10 @@ function clearResult() {
   updateCaptionSource();
   transcriptButton.disabled = true;
   transcriptButton.textContent = t("fetchTranscript");
+  transcriptButton.classList.remove("is-loading");
   clearTranscript();
   message.classList.remove("error");
+  message.hidden = true;
 }
 
 function clearTranscript() {
@@ -1568,6 +1565,7 @@ function showError(text: string) {
 function showMessage(text: string, isError = false) {
   message.textContent = text;
   message.classList.toggle("error", isError);
+  message.hidden = !text.trim();
 }
 
 function appendDebugLog(event: string, details: Record<string, unknown>) {
@@ -1680,6 +1678,7 @@ function renderOutput() {
   output.hidden = isMarkdownOutput;
   codexAnswerOutput.hidden = !isMarkdownOutput;
   codexToolbar.hidden = !isMarkdownOutput;
+  outputTabDivider.hidden = !isMarkdownOutput;
 
   if (!latestTranscript) {
     output.value = "";

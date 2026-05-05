@@ -160,8 +160,21 @@ h1 {
 button.is-loading:disabled {
   background: #c9352b;
   color: #ffffff;
-  cursor: progress;
+  cursor: default;
   animation: codex-button-pulse 1.45s ease-in-out infinite;
+}
+
+button.is-loading::after {
+  content: "";
+  display: inline-block;
+  width: 0.72em;
+  height: 0.72em;
+  margin-left: 0.55em;
+  border: 2px solid rgba(255, 255, 255, 0.54);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  vertical-align: -0.08em;
+  animation: loading-spin 0.8s linear infinite;
 }
 
 .icon-label-button {
@@ -284,11 +297,32 @@ input[type="radio"]:focus {
   }
 }
 
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   button.is-loading:disabled,
   .primary-action button.is-loading {
     animation: none;
   }
+
+  button.is-loading::after {
+    animation: none;
+  }
+}
+
+.status-message {
+  margin: 8px 2px 0;
+  color: #607080;
+  font-size: 0.9rem;
+}
+
+.status-message.error {
+  color: #b42318;
+  font-weight: 700;
 }
 
 .prompt-description {
@@ -398,34 +432,6 @@ input[type="radio"]:focus {
 .output-panel {
   min-height: 0;
   overflow: visible;
-}
-
-.output-header {
-  border-bottom: 1px solid #e2e7ec;
-  padding: 14px 18px;
-}
-
-.output-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
-}
-
-.output-header h2 {
-  margin-bottom: 6px;
-  font-size: 1.2rem;
-  overflow-wrap: anywhere;
-}
-
-.output-header p {
-  margin-bottom: 0;
-  color: #607080;
-}
-
-.output-header p.error {
-  color: #b42318;
-  font-weight: 700;
 }
 
 .caption-panel {
@@ -579,9 +585,12 @@ input[type="radio"]:focus {
 
 .output-tabs {
   display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
   gap: 8px;
   border-bottom: 1px solid #e2e7ec;
-  padding: 12px 18px;
+  overflow-x: auto;
+  padding: 10px 14px;
 }
 
 .output-tab {
@@ -598,13 +607,25 @@ input[type="radio"]:focus {
   color: #174a87;
 }
 
+.output-tab-divider {
+  width: 1px;
+  height: 32px;
+  flex: 0 0 auto;
+  margin: 0 2px 0 4px;
+  background: #d9e1e8;
+}
+
+.output-tab-divider[hidden] {
+  display: none;
+}
+
 .codex-toolbar {
   display: flex;
   flex-wrap: nowrap;
   gap: 8px;
-  border-bottom: 1px solid #e2e7ec;
-  padding: 12px 18px;
-  background: #fbfcfd;
+  align-items: center;
+  min-width: 0;
+  margin-left: auto;
 }
 
 .codex-toolbar[hidden] {
@@ -623,7 +644,7 @@ button.danger-button:hover:not(:disabled) {
 textarea {
   display: block;
   width: 100%;
-  min-height: min(68vh, 720px);
+  min-height: min(76vh, 900px);
   height: auto;
   resize: none;
   overflow: hidden;
@@ -639,7 +660,7 @@ textarea[hidden] {
 }
 
 .markdown-output {
-  min-height: 640px;
+  min-height: min(76vh, 900px);
   overflow: visible;
   padding: 22px;
   color: #17202a;
@@ -1104,7 +1125,6 @@ textarea[hidden] {
   }
 
   .command-row,
-  .output-title-row,
   .result-layout,
   .meta-panel,
   .meta-copy-settings,
@@ -1148,10 +1168,17 @@ textarea[hidden] {
 
   .settings-actions,
   .settings-footer,
-  .codex-toolbar,
   .output-tabs,
   .search-result {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .output-tabs {
+    display: flex;
+  }
+
+  .codex-toolbar button {
+    width: auto;
   }
 }
