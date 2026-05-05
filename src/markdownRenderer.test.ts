@@ -1,0 +1,42 @@
+import { describe, expect, test } from "bun:test";
+import { escapeHtml, normalizeMarkdownForDisplay, renderMarkdown } from "./markdownRenderer";
+
+describe("markdown renderer", () => {
+  test("renders headings, lists, source notes, and timestamp links", () => {
+    const html = renderMarkdown(
+      [
+        "# 見出し",
+        "",
+        "本文です。 4:08から重要です。",
+        "",
+        "出典: 4分08秒 重要な説明",
+        "",
+        "- **要点**"
+      ].join("\n"),
+      {
+        buildTimestampUrl: (seconds) => `https://www.youtube.com/watch?v=abc&t=${seconds}s`
+      }
+    );
+
+    expect(html).toContain("<h1>見出し</h1>");
+    expect(html).toContain('data-timestamp-url="https://www.youtube.com/watch?v=abc&amp;t=248s"');
+    expect(html).toContain('<p class="source-note">');
+    expect(html).toContain("<li><strong>要点</strong></li>");
+  });
+
+  test("does not create unsafe links or scripts", () => {
+    const html = renderMarkdown("[bad](javascript:alert(1)) <script>alert(1)</script>");
+
+    expect(html).toContain("bad");
+    expect(html).not.toContain("javascript:alert");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+  });
+
+  test("normalizes inline numbered sections", () => {
+    expect(normalizeMarkdownForDisplay("Intro 1. **概要** text")).toBe("Intro\n\n1. **概要** text");
+  });
+
+  test("escapes html attributes consistently", () => {
+    expect(escapeHtml(`"a&b"<tag>`)).toBe("&quot;a&amp;b&quot;&lt;tag&gt;");
+  });
+});
