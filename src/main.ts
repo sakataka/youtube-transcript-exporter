@@ -263,10 +263,10 @@ const uiText = {
     characterCount: "文字数",
     videoDuration: "動画時間",
     canonicalUrl: "動画URL",
+    canonicalUrlLink: "リンク",
     viewCount: "再生数",
     captionSourceLabel: "字幕種別",
-    segmentCount: "字幕行数",
-    copyPrompt: "コピープロンプト",
+    copyPrompt: "生成AIプロンプト",
     copyOptions: "コピー設定",
     includeImagePrompt: "画像生成指示を含む",
     formatAutomaticTranscript: "自動字幕を整形",
@@ -274,7 +274,7 @@ const uiText = {
     plainTranscript: "なし",
     timestampedTranscript: "あり",
     transcriptView: "字幕本文",
-    copyPromptView: "コピー用プロンプト",
+    copyPromptView: "生成AIプロンプト",
     codexAnswerView: "AI回答",
     transcriptSearchTitle: "字幕内検索",
     transcriptSearchToggle: "検索",
@@ -391,10 +391,10 @@ const uiText = {
     characterCount: "Characters",
     videoDuration: "Duration",
     canonicalUrl: "Video URL",
+    canonicalUrlLink: "Link",
     viewCount: "Views",
     captionSourceLabel: "Caption type",
-    segmentCount: "Segments",
-    copyPrompt: "Copy prompt",
+    copyPrompt: "Generative AI prompt",
     copyOptions: "Copy settings",
     includeImagePrompt: "Include image prompt",
     formatAutomaticTranscript: "Clean auto captions",
@@ -402,7 +402,7 @@ const uiText = {
     plainTranscript: "Off",
     timestampedTranscript: "On",
     transcriptView: "Transcript",
-    copyPromptView: "Copy prompt",
+    copyPromptView: "Generative AI prompt",
     codexAnswerView: "AI answer",
     transcriptSearchTitle: "Search transcript",
     transcriptSearchToggle: "Search",
@@ -580,12 +580,8 @@ app.innerHTML = `
           <span class="label" data-i18n="captionSourceLabel">字幕種別</span>
           <strong id="caption-source">-</strong>
         </div>
-        <div class="meta-summary-item">
-          <span class="label" data-i18n="segmentCount">字幕行数</span>
-          <strong id="segment-count">0</strong>
-        </div>
         <div class="meta-prompt-settings">
-          <label class="label" for="prompt-template" data-i18n="copyPrompt">コピープロンプト</label>
+          <label class="label" for="prompt-template" data-i18n="copyPrompt">生成AIプロンプト</label>
           <select id="prompt-template"></select>
           <p class="prompt-description" id="prompt-description"></p>
         </div>
@@ -639,7 +635,7 @@ app.innerHTML = `
         </section>
         <div class="output-tabs" role="tablist" aria-label="Output view">
           <button class="output-tab is-active" id="transcript-view-tab" type="button" data-output-mode="transcript" role="tab" aria-selected="true" aria-controls="transcript-output" data-i18n="transcriptView">字幕本文</button>
-          <button class="output-tab" id="copy-prompt-view-tab" type="button" data-output-mode="copyPrompt" role="tab" aria-selected="false" aria-controls="transcript-output" data-i18n="copyPromptView">コピー用プロンプト</button>
+          <button class="output-tab" id="copy-prompt-view-tab" type="button" data-output-mode="copyPrompt" role="tab" aria-selected="false" aria-controls="transcript-output" data-i18n="copyPromptView">生成AIプロンプト</button>
           <button class="output-tab" id="codex-answer-view-tab" type="button" data-output-mode="codexAnswer" role="tab" aria-selected="false" aria-controls="transcript-output" data-i18n="codexAnswerView">AI回答</button>
           <span class="output-tab-divider" aria-hidden="true"></span>
           <div class="codex-toolbar" id="codex-toolbar" hidden>
@@ -824,7 +820,6 @@ const videoDuration = document.querySelector<HTMLElement>("#video-duration")!;
 const canonicalUrl = document.querySelector<HTMLElement>("#canonical-url")!;
 const viewCount = document.querySelector<HTMLElement>("#view-count")!;
 const captionSource = document.querySelector<HTMLElement>("#caption-source")!;
-const segmentCount = document.querySelector<HTMLElement>("#segment-count")!;
 const transcriptDisplayModeInputs = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="transcript-display-mode"]')
 );
@@ -1007,7 +1002,6 @@ includeImagePrompt.addEventListener("change", () => {
   saveAppSettings();
   renderOutput();
   updateTranscriptCharacterCount();
-  updateTranscriptStats();
   showMessage(t("copyOptionsChanged"));
 });
 
@@ -1016,7 +1010,6 @@ formatAutomaticTranscript.addEventListener("change", () => {
   saveAppSettings();
   renderOutput();
   updateTranscriptCharacterCount();
-  updateTranscriptStats();
   showMessage(t("copyOptionsChanged"));
 });
 
@@ -1028,7 +1021,6 @@ transcriptDisplayModeInputs.forEach((input) => {
       renderTranscriptDisplayMode();
       renderOutput();
       updateTranscriptCharacterCount();
-      updateTranscriptStats();
       showMessage(t("copyOptionsChanged"));
     }
   });
@@ -1447,7 +1439,6 @@ function applyTranscriptPayload(payload: TranscriptSuccess, requestedCaption: Ca
   });
   updateCaptionSource();
   updateTranscriptCharacterCount();
-  updateTranscriptStats();
   renderTranscriptSearch();
   askCodexButton.disabled = payload.text.length === 0;
   renderOutput();
@@ -1544,7 +1535,6 @@ function clearTranscript() {
   codexRequestToken += 1;
   stopCodexPolling();
   charCount.textContent = "0";
-  segmentCount.textContent = "0";
   askCodexButton.disabled = !selectedCaption;
   transcriptButton.textContent = t("fetchTranscript");
   isTranscriptSearchExpanded = false;
@@ -1616,7 +1606,7 @@ function renderCanonicalUrl(url: string | undefined) {
     return;
   }
 
-  canonicalUrl.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a>`;
+  canonicalUrl.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(t("canonicalUrlLink"))}</a>`;
 }
 
 canonicalUrl.addEventListener("click", async (event) => {
@@ -2244,16 +2234,6 @@ function updateTranscriptCharacterCount() {
   charCount.textContent = count.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
 }
 
-function updateTranscriptStats() {
-  if (!latestTranscript) {
-    segmentCount.textContent = "0";
-    return;
-  }
-
-  const segmentTotal = getSearchableTranscriptSegments(latestTranscript).length;
-  segmentCount.textContent = segmentTotal.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
-}
-
 function renderTranscriptDisplayMode() {
   transcriptDisplayModeInputs.forEach((input) => {
     input.checked = input.value === appSettings.transcriptDisplayMode;
@@ -2501,7 +2481,6 @@ function applyUiLanguage() {
   updateSelectedLanguage();
   updateCaptionSource();
   updateTranscriptCharacterCount();
-  updateTranscriptStats();
   viewCount.textContent = formatCount(latestTranscript?.viewCount ?? latestCaptionList?.viewCount);
   renderTranscriptSearch();
   renderCodexHistory();

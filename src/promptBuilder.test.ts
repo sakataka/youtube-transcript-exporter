@@ -50,6 +50,7 @@ describe("prompt builder", () => {
     expect(prompt).toContain("整形済み字幕");
     expect(prompt).toContain("- 0:02 (https://example.com/watch?t=2s): 最初の説明");
     expect(prompt).toContain("画像生成指示:");
+    expect(prompt).not.toContain("権利や出典に注意が必要そうな画像");
   });
 
   test("omits timed reference when transcript display is already timestamped", () => {
