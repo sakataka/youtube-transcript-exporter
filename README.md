@@ -1,6 +1,6 @@
 # YouTube AI Brief
 
-公開されているYouTube動画の字幕または自動字幕を取得し、生成AIに渡しやすいプロンプト付きテキストへ整えるmacOS向けローカルGUIアプリです。動画タイトル、チャンネル名、公開日、動画時間などの補助情報も可能な範囲で付け、ChatGPTなどへ貼り付けて要約・解説・画像生成に使える形にします。
+公開されているYouTube動画の字幕または自動字幕を取得し、生成AIに渡しやすいプロンプト付きテキストへ整えるローカルWebアプリです。ローカルで起動したWebサーバーが `yt-dlp` や Codex CLI を呼び出し、ブラウザUIから字幕取得、コピー、AI回答生成を行います。動画タイトル、チャンネル名、公開日、動画時間などの補助情報も可能な範囲で付け、ChatGPTなどへ貼り付けて要約・解説・画像生成に使える形にします。
 
 ## 主な機能
 
@@ -24,7 +24,7 @@
 - Bun
 - Rust
 - yt-dlp
-- Codex CLI（アプリ内でAI回答を生成する場合）
+- Codex CLI（Webアプリ内でAI回答を生成する場合）
 
 macOSで `yt-dlp` がない場合:
 
@@ -32,18 +32,28 @@ macOSで `yt-dlp` がない場合:
 brew install yt-dlp
 ```
 
-Codex連携を使う場合は、事前にCodex CLIへログインしておきます。アプリは `codex app-server` を別途常駐させず、`Codexに質問` ボタンを押したときに標準入出力の子プロセスとして起動します。
+Codex連携を使う場合は、事前にCodex CLIへログインしておきます。ローカルWebサーバーは `codex app-server` を別途常駐させず、`Codexに質問` ボタンを押したときに標準入出力の子プロセスとして起動します。
 
 ## 開発起動
 
 ```sh
 bun install
-bun run app
+bun run web
 ```
 
-Tauriの開発ウィンドウが起動します。
+ビルド後にローカルWebサーバーが起動します。表示された `http://127.0.0.1:5179` をブラウザで開きます。
 
-## macOSアプリの作成
+すでに `dist/` を作成済みで、サーバーだけ起動したい場合:
+
+```sh
+bun run web:server
+```
+
+`PORT=5180 bun run web:server` のようにポートを変えられます。別ディレクトリのビルド成果物を使う場合は `WEB_DIST_DIR=/path/to/dist bun run web:server` を使います。
+
+## macOSアプリ
+
+既存のmacOSアプリ形式は残していますが、今後の主な実行形態はローカルWebサーバーです。macOSアプリを作成する場合:
 
 ```sh
 bun run package

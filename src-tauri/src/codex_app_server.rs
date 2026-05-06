@@ -51,6 +51,7 @@ struct TurnOutput {
     images: Vec<String>,
 }
 
+#[allow(dead_code)]
 pub fn ask(prompt: &str, generate_image: bool) -> Result<String, CodexAppServerError> {
     ask_with_control(prompt, generate_image, CodexRunControl::default())
 }
@@ -174,7 +175,14 @@ pub fn ask_with_control(
     if generate_image && !final_answer.trim().is_empty() {
         let image_prompt = build_image_generation_turn_prompt();
         let image_turn_started_at = Instant::now();
-        let image_turn = run_turn(&mut reader, &mut stdin, 3, &thread_id, &image_prompt, &control)?;
+        let image_turn = run_turn(
+            &mut reader,
+            &mut stdin,
+            3,
+            &thread_id,
+            &image_prompt,
+            &control,
+        )?;
         debug_log::append_event(
             "codex_app_server.turn.image.completed",
             json!({

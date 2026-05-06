@@ -9,6 +9,10 @@ edition = "2021"
 name = "youtube_transcript_exporter_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "youtube-ai-brief-web"
+path = "src/local_server_main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

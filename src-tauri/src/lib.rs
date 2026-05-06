@@ -1,6 +1,6 @@
-mod codex_app_server;
-mod debug_log;
-mod transcript;
+pub(crate) mod codex_app_server;
+pub(crate) mod debug_log;
+pub(crate) mod transcript;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -279,7 +279,8 @@ fn get_debug_log_path() -> Result<String, String> {
 #[tauri::command]
 fn read_debug_log() -> Result<DebugLogReadResult, String> {
     let path = debug_log::ensure_debug_log_file()?;
-    let content = std::fs::read_to_string(&path).map_err(|error| format!("ログファイルを読み取れませんでした: {error}"))?;
+    let content = std::fs::read_to_string(&path)
+        .map_err(|error| format!("ログファイルを読み取れませんでした: {error}"))?;
     Ok(DebugLogReadResult {
         path: path.to_string_lossy().to_string(),
         content,

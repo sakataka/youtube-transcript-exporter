@@ -1,5 +1,5 @@
 import "./style.css";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeBackend } from "./backendClient";
 import { escapeHtml, renderMarkdown as renderMarkdownOutput } from "./markdownRenderer";
 import {
   buildAnalysisPrompt as buildAnalysisPromptText,
@@ -1307,7 +1307,7 @@ settingsOpenDebugLog.addEventListener("click", async () => {
 });
 
 async function loadDebugLogIntoSettings() {
-  const log = await invoke<DebugLogReadResult>("read_debug_log");
+  const log = await invokeBackend<DebugLogReadResult>("read_debug_log");
   settingsDebugLogPath.textContent = log.path;
   settingsDebugLogContent.value = log.content.trim() || t("debugLogEmpty");
   settingsDebugLogViewer.hidden = false;
@@ -1383,7 +1383,7 @@ async function fetchSelectedTranscript(options: { copyAfterFetch: boolean }) {
   });
 
   try {
-    const payload = await invoke<TranscriptSuccess>("fetch_transcript", {
+    const payload = await invokeBackend<TranscriptSuccess>("fetch_transcript", {
       url,
       language: requestedCaption.language,
       source: requestedCaption.source
@@ -1452,7 +1452,7 @@ async function checkCaptionCandidates(url: string) {
   clearResult();
 
   try {
-    const payload = await invoke<CaptionListSuccess>("list_captions", { url });
+    const payload = await invokeBackend<CaptionListSuccess>("list_captions", { url });
 
     if (requestToken !== captionRequestToken) {
       return;
@@ -1559,7 +1559,7 @@ function showMessage(text: string, isError = false) {
 }
 
 function appendDebugLog(event: string, details: Record<string, unknown>) {
-  void invoke("append_debug_log", { entry: { event, details } }).catch(() => {
+  void invokeBackend("append_debug_log", { entry: { event, details } }).catch(() => {
     // Debug logging must never block the primary workflow.
   });
 }
@@ -1766,14 +1766,14 @@ async function startCodexRequest(
   showMessage(t("askingCodex"));
 
   try {
-    const started = await invoke<CodexJobStartSuccess>("start_codex_request", {
+    const started = await invokeBackend<CodexJobStartSuccess>("start_codex_request", {
       prompt,
       generateImage: options.generateImage
     });
     if (token !== codexRequestToken) {
       isStartingCodexRequest = false;
       setCodexLoading(false);
-      void invoke("cancel_codex_request", { jobId: started.jobId });
+      void invokeBackend("cancel_codex_request", { jobId: started.jobId });
       return;
     }
 
@@ -1814,7 +1814,7 @@ function pollCodexRequest(jobId: string, token: number) {
     }
 
     try {
-      const status = await invoke<CodexJobStatus>("get_codex_request", { jobId });
+      const status = await invokeBackend<CodexJobStatus>("get_codex_request", { jobId });
       handleCodexJobStatus(status, token);
     } catch (error) {
       latestCodexAnswer = formatInvokeError(error, t("codexAnswerFailed"));
@@ -1877,7 +1877,7 @@ async function cancelActiveCodexRequest() {
   stopCodexPolling();
 
   try {
-    await invoke<CodexJobStatus>("cancel_codex_request", { jobId: request.jobId });
+    await invokeBackend<CodexJobStatus>("cancel_codex_request", { jobId: request.jobId });
   } catch {
     // The local UI should still recover even if the process already exited.
   }
@@ -2307,7 +2307,7 @@ async function openTimestampUrl(url: string | undefined) {
   }
 
   try {
-    await invoke("open_youtube_url", { url });
+    await invokeBackend("open_youtube_url", { url });
   } catch {
     window.open(url, "_blank", "noopener,noreferrer");
   }
@@ -2319,7 +2319,7 @@ async function openExternalUrl(url: string | undefined) {
   }
 
   try {
-    await invoke("open_external_url", { url });
+    await invokeBackend("open_external_url", { url });
   } catch {
     window.open(url, "_blank", "noopener,noreferrer");
   }

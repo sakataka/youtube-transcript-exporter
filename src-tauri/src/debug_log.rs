@@ -15,7 +15,8 @@ pub fn append_event(event: &str, details: Value) {
 pub fn append_event_result(event: &str, details: Value) -> Result<(), String> {
     let path = debug_log_path()?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| format!("ログディレクトリを作成できませんでした: {error}"))?;
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("ログディレクトリを作成できませんでした: {error}"))?;
     }
 
     let entry = DebugLogEntry {
@@ -23,7 +24,8 @@ pub fn append_event_result(event: &str, details: Value) -> Result<(), String> {
         event,
         details,
     };
-    let line = serde_json::to_string(&entry).map_err(|error| format!("ログをJSON化できませんでした: {error}"))?;
+    let line = serde_json::to_string(&entry)
+        .map_err(|error| format!("ログをJSON化できませんでした: {error}"))?;
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -44,10 +46,12 @@ pub fn debug_log_path() -> Result<PathBuf, String> {
 pub fn ensure_debug_log_file() -> Result<PathBuf, String> {
     let path = debug_log_path()?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| format!("ログディレクトリを作成できませんでした: {error}"))?;
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("ログディレクトリを作成できませんでした: {error}"))?;
     }
     if !path.exists() {
-        fs::write(&path, "").map_err(|error| format!("ログファイルを作成できませんでした: {error}"))?;
+        fs::write(&path, "")
+            .map_err(|error| format!("ログファイルを作成できませんでした: {error}"))?;
     }
     Ok(path)
 }

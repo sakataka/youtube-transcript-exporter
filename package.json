@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "web": "bun run build && cargo run --manifest-path src-tauri/Cargo.toml --bin youtube-ai-brief-web",
+    "web:server": "cargo run --manifest-path src-tauri/Cargo.toml --bin youtube-ai-brief-web",
+    "web:build": "bun run build && cargo build --manifest-path src-tauri/Cargo.toml --bin youtube-ai-brief-web",
     "tauri": "tauri",
     "dev": "tauri dev",
     "app": "tauri dev",

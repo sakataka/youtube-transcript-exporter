@@ -13,7 +13,8 @@
 
 ## 開発コマンド
 
-- 開発起動: `bun run app`
+- ローカルWebアプリ起動: `bun run web`
+- ビルド済みWebサーバー起動: `bun run web:server`
 - 型チェック: `bun run typecheck`
 - Rustテスト: `bun run test`
 - macOSアプリ作成: `bun run package`
@@ -22,8 +23,10 @@
 ## 実装メモ
 
 - フロントエンドは `src/main.ts` と `src/style.css`。
-- Tauri/Rust側の字幕取得処理は `src-tauri/src/transcript.rs`。
+- ローカルWebサーバーは `src-tauri/src/local_web_server.rs`。
+- 字幕取得処理は `src-tauri/src/transcript.rs`。
 - コピー用プロンプト設定とUI言語設定は `localStorage` に保存する。
 - `/Applications` へコピーする処理は `scripts/install-app.ts`。
+- 今後の主な実行形態はローカルWebサーバー。機能追加時はTauri固有実装より、ローカルHTTP APIとして実現できる設計を優先する。
 - UI、Tauri、配布アプリに反映される意味のある変更を行った場合は、検証後に `bun run package:install` を実行して `/Applications/YouTube AI Brief.app` へ最新アプリを同期する。
 - 配布用に最新アプリへ反映するときは、`bun run package:install` を実行し、`/Applications/YouTube AI Brief.app` が更新されていることを確認する。
