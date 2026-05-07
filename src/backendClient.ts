@@ -1,20 +1,9 @@
 type BackendCommandArgs = Record<string, unknown>;
 
-declare global {
-  interface Window {
-    __TAURI_INTERNALS__?: unknown;
-  }
-}
-
 export async function invokeBackend<T = unknown>(
   command: string,
   args: BackendCommandArgs = {}
 ): Promise<T> {
-  if (isTauriRuntime()) {
-    const { invoke } = await import("@tauri-apps/api/core");
-    return invoke<T>(command, args);
-  }
-
   const response = await fetch(`/api/${command}`, {
     method: "POST",
     headers: {
@@ -29,10 +18,6 @@ export async function invokeBackend<T = unknown>(
   }
 
   return payload as T;
-}
-
-function isTauriRuntime() {
-  return typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
 }
 
 function extractBackendError(payload: unknown) {

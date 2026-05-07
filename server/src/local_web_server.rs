@@ -245,8 +245,8 @@ fn api_list_captions(body: &[u8]) -> Result<Value, String> {
     let request: UrlRequest = parse_json(body)?;
     let started_at = Instant::now();
     debug_log::append_event("web.list_captions.start", json!({ "url": &request.url }));
-    let result = tauri::async_runtime::block_on(transcript::list_captions(&request.url))
-        .map_err(|error| error.message)?;
+    let result =
+        block_on_async(transcript::list_captions(&request.url))?.map_err(|error| error.message)?;
     debug_log::append_event(
         "web.list_captions.completed",
         json!({
@@ -270,10 +270,10 @@ fn api_fetch_transcript(body: &[u8]) -> Result<Value, String> {
             "source": &request.source,
         }),
     );
-    let result = tauri::async_runtime::block_on(transcript::fetch_transcript(
+    let result = block_on_async(transcript::fetch_transcript(
         &request.url,
         Some((request.language, request.source)),
-    ))
+    ))?
     .map_err(|error| error.message)?;
     debug_log::append_event(
         "web.fetch_transcript.completed",
@@ -469,6 +469,12 @@ fn handle_static_request(request: &HttpRequest, dist_dir: &Path) -> HttpResponse
 
 fn parse_json<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T, String> {
     serde_json::from_slice(body).map_err(|error| format!("JSONを解釈できませんでした: {error}"))
+}
+
+fn block_on_async<T>(future: impl std::future::Future<Output = T>) -> Result<T, String> {
+    tokio::runtime::Runtime::new()
+        .map_err(|error| format!("非同期ランタイムを初期化できませんでした: {error}"))
+        .map(|runtime| runtime.block_on(future))
 }
 
 fn json_response(status: u16, value: Value) -> HttpResponse {

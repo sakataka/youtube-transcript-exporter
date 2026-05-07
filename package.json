@@ -5,26 +5,16 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "web": "bun run build && cargo run --manifest-path src-tauri/Cargo.toml --bin youtube-ai-brief-web",
-    "web:server": "cargo run --manifest-path src-tauri/Cargo.toml --bin youtube-ai-brief-web",
-    "web:build": "bun run build && cargo build --manifest-path src-tauri/Cargo.toml --bin youtube-ai-brief-web",
-    "tauri": "tauri",
-    "dev": "tauri dev",
-    "app": "tauri dev",
-    "package": "tauri build --bundles app",
-    "install:app": "bun run scripts/install-app.ts",
-    "package:install": "bun run package && bun run install:app",
+    "web": "bun run build && cargo run --manifest-path server/Cargo.toml --bin youtube-ai-brief-web",
+    "web:server": "cargo run --manifest-path server/Cargo.toml --bin youtube-ai-brief-web",
+    "web:build": "bun run build && cargo build --manifest-path server/Cargo.toml --bin youtube-ai-brief-web",
     "test:frontend": "bun test src/*.test.ts",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test": "cargo test --manifest-path server/Cargo.toml",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.10.1",
     "@types/bun": "latest",
     "typescript": "latest",
     "vite": "latest"
-  },
-  "dependencies": {
-    "@tauri-apps/api": "^2.10.1"
   }
 }
