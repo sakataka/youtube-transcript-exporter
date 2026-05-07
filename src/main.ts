@@ -1,5 +1,6 @@
 import "./style.css";
 import { invokeBackend } from "./backendClient";
+import { getCodexAnswerTextForCopy } from "./codexAnswerText";
 import { escapeHtml, renderMarkdown as renderMarkdownOutput } from "./markdownRenderer";
 import {
   buildAnalysisPrompt as buildAnalysisPromptText,
@@ -1889,16 +1890,18 @@ async function cancelActiveCodexRequest() {
 }
 
 async function copyLatestCodexAnswer() {
-  if (!latestCodexAnswer.trim()) {
+  const answerText = getCodexAnswerTextForCopy(latestCodexAnswer);
+
+  if (!answerText) {
     showMessage(t("codexNoAnswer"), true);
     return;
   }
 
   try {
     if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(latestCodexAnswer);
+      await navigator.clipboard.writeText(answerText);
     } else {
-      copyTextWithSelectionFallback(latestCodexAnswer);
+      copyTextWithSelectionFallback(answerText);
     }
     showMessage(t("codexAnswerCopied"));
   } catch {
