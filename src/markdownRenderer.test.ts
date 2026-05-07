@@ -36,6 +36,23 @@ describe("markdown renderer", () => {
     expect(normalizeMarkdownForDisplay("Intro 1. **概要** text")).toBe("Intro\n\n1. **概要** text");
   });
 
+  test("normalizes inline markdown numbered headings", () => {
+    const input =
+      "動画内の主張が一部かなり時事的なので、現在情報を短く確認します。# 1. この動画の概要";
+
+    expect(normalizeMarkdownForDisplay(input)).toBe(
+      "動画内の主張が一部かなり時事的なので、現在情報を短く確認します。\n\n# 1. この動画の概要"
+    );
+  });
+
+  test("renders plain numbered section titles as headings", () => {
+    const html = renderMarkdown(["# 1. この動画の概要", "", "本文です。", "", "2. 重要なポイント"].join("\n"));
+
+    expect(html).toContain("<h1>1. この動画の概要</h1>");
+    expect(html).toContain("<p>本文です。</p>");
+    expect(html).toContain("<h2>重要なポイント</h2>");
+  });
+
   test("escapes html attributes consistently", () => {
     expect(escapeHtml(`"a&b"<tag>`)).toBe("&quot;a&amp;b&quot;&lt;tag&gt;");
   });

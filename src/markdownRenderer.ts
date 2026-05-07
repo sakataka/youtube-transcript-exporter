@@ -178,6 +178,7 @@ function renderListItemMarkdown(text: string, options: RenderMarkdownOptions) {
 export function normalizeMarkdownForDisplay(markdown: string) {
   return markdown
     .replace(/\r\n?/g, "\n")
+    .replace(/([^\n])\s*(#{1,4}\s+\d+[.)]\s+[^\n]+)/g, "$1\n\n$2")
     .replace(/([^\n])\s+(\d+[.)]\s+(?:\*\*|__)[^\n]+?(?:\*\*|__))/g, "$1\n\n$2");
 }
 
@@ -225,7 +226,31 @@ function parseNumberedSectionTitle(text: string) {
     return { title: boldWithRest[1], rest: boldWithRest[2] };
   }
 
+  if (isPlainNumberedSectionTitle(text)) {
+    return { title: text.trim(), rest: "" };
+  }
+
   return null;
+}
+
+function isPlainNumberedSectionTitle(text: string) {
+  const trimmed = text.trim();
+
+  if (!trimmed || trimmed.length > 80) {
+    return false;
+  }
+
+  if (/[。.!?！？、,;；]$/.test(trimmed)) {
+    return false;
+  }
+
+  if (/[。.!?！？]\s+/.test(trimmed)) {
+    return false;
+  }
+
+  return /(?:概要|要点|ポイント|詳細|結論|主張|根拠|背景|注意点|Summary|Overview|Key points?|Details?|Conclusion|Arguments?)/i.test(
+    trimmed
+  );
 }
 
 function parseMarkdownTableRow(text: string) {
