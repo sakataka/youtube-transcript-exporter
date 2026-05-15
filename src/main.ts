@@ -286,6 +286,7 @@ const uiText = {
     transcriptSearchEmpty: "一致する字幕がありません。",
     transcriptSearchCount: (count: number) => `${count.toLocaleString("ja-JP")}件一致`,
     openTimestamp: "YouTubeで開く",
+    reloadButton: "更新",
     settingsButton: "設定",
     fetchTranscript: "字幕を取得",
     fetchTranscriptLoading: "取得中",
@@ -417,6 +418,7 @@ const uiText = {
     transcriptSearchEmpty: "No matching captions found.",
     transcriptSearchCount: (count: number) => `${count.toLocaleString("en-US")} match${count === 1 ? "" : "es"}`,
     openTimestamp: "Open in YouTube",
+    reloadButton: "Reload",
     settingsButton: "Settings",
     fetchTranscript: "Fetch",
     fetchTranscriptLoading: "Getting",
@@ -563,6 +565,13 @@ app.innerHTML = `
         <p class="status-message" id="message" hidden></p>
       </form>
       <div class="app-header-actions">
+        <button class="secondary-button compact-button icon-label-button" id="reload-app-button" type="button">
+          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-2.6-6.4"></path>
+            <path d="M21 3v6h-6"></path>
+          </svg>
+          <span data-i18n="reloadButton">更新</span>
+        </button>
         <button class="secondary-button compact-button icon-label-button" id="prompt-settings-button" type="button">
           <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>
@@ -803,6 +812,7 @@ const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-
 const askCodexButton = document.querySelector<HTMLButtonElement>("#ask-codex-button")!;
 const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
 const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
+const reloadAppButton = document.querySelector<HTMLButtonElement>("#reload-app-button")!;
 const promptSettingsButton = document.querySelector<HTMLButtonElement>("#prompt-settings-button")!;
 const includeImagePrompt = document.querySelector<HTMLInputElement>("#include-image-prompt")!;
 const formatAutomaticTranscript = document.querySelector<HTMLInputElement>("#format-automatic-transcript")!;
@@ -1164,6 +1174,10 @@ settingsTabs.forEach((tab) => {
 
 promptSettingsButton.addEventListener("click", () => {
   openPromptSettings();
+});
+
+reloadAppButton.addEventListener("click", () => {
+  window.location.reload();
 });
 
 promptSettingsClose.addEventListener("click", () => {
