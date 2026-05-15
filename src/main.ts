@@ -538,6 +538,30 @@ app.innerHTML = `
           <p data-i18n="heading">YouTube動画をAI向けに整理</p>
         </div>
       </div>
+      <form class="input-panel" id="caption-form">
+        <div class="command-row">
+          <input
+            id="youtube-url"
+            name="url"
+            type="url"
+            aria-label="YouTube URL"
+            placeholder="https://www.youtube.com/watch?v=..."
+            autocomplete="off"
+            autofocus
+            required
+          />
+          <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
+          <button id="ask-codex-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
+          <button class="secondary-button compact-button icon-label-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel">
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="6"></circle>
+              <path d="m16 16 4 4"></path>
+            </svg>
+            <span data-i18n="transcriptSearchToggle">検索</span>
+          </button>
+        </div>
+        <p class="status-message" id="message" hidden></p>
+      </form>
       <div class="app-header-actions">
         <button class="secondary-button compact-button icon-label-button" id="prompt-settings-button" type="button">
           <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -548,37 +572,9 @@ app.innerHTML = `
         </button>
       </div>
     </header>
-    <form class="input-panel" id="caption-form">
-      <div class="command-row">
-        <input
-          id="youtube-url"
-          name="url"
-          type="url"
-          aria-label="YouTube URL"
-          placeholder="https://www.youtube.com/watch?v=..."
-          autocomplete="off"
-          autofocus
-          required
-        />
-        <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
-        <button id="ask-codex-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
-        <button class="secondary-button compact-button icon-label-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel">
-          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="11" cy="11" r="6"></circle>
-            <path d="m16 16 4 4"></path>
-          </svg>
-          <span data-i18n="transcriptSearchToggle">検索</span>
-        </button>
-      </div>
-      <p class="status-message" id="message" hidden></p>
-    </form>
 
     <section class="result-layout" aria-live="polite">
       <div class="meta-panel">
-        <div class="meta-summary-item">
-          <span class="label" data-i18n="videoId">動画ID</span>
-          <strong id="video-id">-</strong>
-        </div>
         <div class="meta-summary-item">
           <span class="label" data-i18n="selectedLanguage">選択言語</span>
           <strong id="language">-</strong>
@@ -844,7 +840,6 @@ const output = document.querySelector<HTMLTextAreaElement>("#transcript-output")
 const codexAnswerOutput = document.querySelector<HTMLDivElement>("#codex-answer-output")!;
 const message = document.querySelector<HTMLParagraphElement>("#message")!;
 const title = document.querySelector<HTMLHeadingElement>("#video-title")!;
-const videoId = document.querySelector<HTMLElement>("#video-id")!;
 const language = document.querySelector<HTMLElement>("#language")!;
 const charCount = document.querySelector<HTMLElement>("#char-count")!;
 const videoDuration = document.querySelector<HTMLElement>("#video-duration")!;
@@ -1458,7 +1453,6 @@ async function fetchSelectedTranscript(options: { copyAfterFetch: boolean }) {
 function applyTranscriptPayload(payload: TranscriptSuccess, requestedCaption: CaptionOption) {
   latestTranscript = payload;
   title.textContent = payload.title || t("transcriptTitle");
-  videoId.textContent = payload.videoId;
   videoDuration.textContent = payload.duration || "-";
   renderCanonicalUrl(payload.webpageUrl);
   viewCount.textContent = formatCount(payload.viewCount);
@@ -1492,7 +1486,6 @@ async function checkCaptionCandidates(url: string) {
     latestCaptionList = payload;
     selectedCaption = payload.captions[0] ?? null;
     title.textContent = payload.title || t("transcriptTitle");
-    videoId.textContent = payload.videoId;
     videoDuration.textContent = payload.duration || "-";
     renderCanonicalUrl(payload.webpageUrl);
     viewCount.textContent = formatCount(payload.viewCount);
@@ -1540,7 +1533,6 @@ function clearResult() {
   captionCount.textContent = t("captionCount", 0);
   captionPanel.hidden = true;
   title.textContent = t("transcriptTitle");
-  videoId.textContent = "-";
   language.textContent = "-";
   videoDuration.textContent = "-";
   renderCanonicalUrl(undefined);

@@ -89,7 +89,7 @@ button.compact-button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 16px;
   min-height: 58px;
   border: 1px solid #1e1f23;
   border-radius: 8px 8px 0 0;
@@ -105,6 +105,7 @@ button.compact-button {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -145,6 +146,7 @@ button.compact-button {
 .app-header-actions {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 10px;
 }
 
@@ -197,6 +199,17 @@ h1 {
   margin-bottom: 14px;
 }
 
+.app-header .input-panel {
+  flex: 1 1 720px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
 .input-panel label,
 .label {
   display: block;
@@ -208,14 +221,14 @@ h1 {
 
 .command-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-wrap: nowrap;
+  gap: 10px;
   align-items: center;
 }
 
 .command-row #youtube-url {
-  flex: 1 1 620px;
-  min-width: 360px;
+  flex: 1 1 300px;
+  min-width: 220px;
 }
 
 .command-row button {
@@ -226,11 +239,11 @@ h1 {
 }
 
 .command-row #transcript-button {
-  min-width: 142px;
+  min-width: 124px;
 }
 
 .command-row #ask-codex-button {
-  min-width: 148px;
+  min-width: 118px;
   background: #161616;
   box-shadow: 0 12px 22px rgba(22, 22, 22, 0.12);
 }
@@ -240,7 +253,7 @@ h1 {
 }
 
 .command-row #transcript-search-toggle {
-  min-width: 112px;
+  min-width: 94px;
 }
 
 button.is-loading:disabled {
@@ -318,7 +331,7 @@ input[type="radio"]:focus {
 
 .meta-panel {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(240px, 1.55fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(240px, 1.55fr);
   gap: 0;
   overflow: hidden;
   padding: 0;
