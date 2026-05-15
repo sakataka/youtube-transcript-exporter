@@ -1284,6 +1284,10 @@ textarea[hidden] {
     width: 100%;
   }
 
+  .app-header .input-panel {
+    flex: 0 0 auto;
+  }
+
   .workspace {
     width: min(100vw - 20px, 640px);
     padding: 18px 0;
@@ -1321,16 +1325,12 @@ textarea[hidden] {
     width: 100%;
   }
 
-  .output-panel {
-    min-height: 520px;
-  }
-
   textarea {
-    min-height: 460px;
+    min-height: min(42vh, 340px);
   }
 
   .markdown-output {
-    min-height: 520px;
+    min-height: min(42vh, 340px);
   }
 
   .settings-section {
