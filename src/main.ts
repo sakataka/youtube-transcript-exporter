@@ -250,7 +250,7 @@ const defaultPromptTemplates: PromptTemplate[] = [
 
 let promptSettings = loadPromptSettings();
 let appSettings = loadAppSettings();
-let activeSettingsSection: "prompts" | "display" = "prompts";
+let activeSettingsSection: "prompts" | "copy" | "display" = "prompts";
 
 const uiText = {
   ja: {
@@ -322,7 +322,10 @@ const uiText = {
     settingsTitle: "設定",
     close: "閉じる",
     promptsTab: "プロンプト",
+    copyTab: "コピー",
     displayTab: "表示",
+    copySettingsTitle: "コピー設定",
+    copySettingsDescription: "字幕取得後にクリップボードへ入れる内容と、AIへ渡す追加指示をまとめて管理します。",
     template: "テンプレート",
     add: "追加",
     delete: "削除",
@@ -450,7 +453,10 @@ const uiText = {
     settingsTitle: "Settings",
     close: "Close",
     promptsTab: "Prompts",
+    copyTab: "Copy",
     displayTab: "Display",
+    copySettingsTitle: "Copy settings",
+    copySettingsDescription: "Controls copied transcript content and the extra instructions sent to AI after fetching captions.",
     template: "Template",
     add: "Add",
     delete: "Delete",
@@ -519,6 +525,30 @@ if (!app) {
 
 app.innerHTML = `
   <section class="workspace">
+    <header class="app-header">
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M21 7.3a3 3 0 0 0-2.1-2.1C17 4.7 12 4.7 12 4.7s-5 0-6.9.5A3 3 0 0 0 3 7.3 31.4 31.4 0 0 0 2.5 12c0 1.6.1 3.2.5 4.7a3 3 0 0 0 2.1 2.1c1.9.5 6.9.5 6.9.5s5 0 6.9-.5a3 3 0 0 0 2.1-2.1c.4-1.5.5-3.1.5-4.7 0-1.6-.1-3.2-.5-4.7Z"></path>
+            <path d="m10 9 5 3-5 3V9Z"></path>
+          </svg>
+        </span>
+        <div>
+          <h1>${appName}</h1>
+          <p data-i18n="heading">YouTube動画をAI向けに整理</p>
+        </div>
+      </div>
+      <div class="app-header-actions">
+        <span class="local-status" data-i18n="status">ローカル実行</span>
+        <button class="secondary-button compact-button icon-label-button" id="prompt-settings-button" type="button">
+          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19 12a7 7 0 0 0-.1-1.1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.9-1.1L14.2 3h-4.4l-.4 2.8A7 7 0 0 0 7.5 7L5.1 6l-2 3.5 2 1.5a7 7 0 0 0 0 2.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.9 1.1l.4 2.8h4.4l.4-2.8a7 7 0 0 0 1.9-1.1l2.4 1 2-3.5-2-1.5c.1-.3.1-.7.1-1.1Z"></path>
+          </svg>
+          <span data-i18n="settingsButton">設定</span>
+        </button>
+      </div>
+    </header>
     <form class="input-panel" id="caption-form">
       <div class="command-row">
         <input
@@ -539,13 +569,6 @@ app.innerHTML = `
             <path d="m16 16 4 4"></path>
           </svg>
           <span data-i18n="transcriptSearchToggle">検索</span>
-        </button>
-        <button class="secondary-button compact-button icon-label-button" id="prompt-settings-button" type="button">
-          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19 12a7 7 0 0 0-.1-1.1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.9-1.1L14.2 3h-4.4l-.4 2.8A7 7 0 0 0 7.5 7L5.1 6l-2 3.5 2 1.5a7 7 0 0 0 0 2.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.9 1.1l.4 2.8h4.4l.4-2.8a7 7 0 0 0 1.9-1.1l2.4 1 2-3.5-2-1.5c.1-.3.1-.7.1-1.1Z"></path>
-          </svg>
-          <span data-i18n="settingsButton">設定</span>
         </button>
       </div>
       <p class="status-message" id="message" hidden></p>
@@ -585,34 +608,6 @@ app.innerHTML = `
           <label class="label" for="prompt-template" data-i18n="copyPrompt">生成AIプロンプト</label>
           <select id="prompt-template"></select>
           <p class="prompt-description" id="prompt-description"></p>
-        </div>
-        <div class="meta-copy-settings">
-          <div class="copy-options-control">
-            <span class="label" data-i18n="copyOptions">コピー設定</span>
-            <div class="copy-option-row">
-              <label class="option-toggle">
-                <input id="include-image-prompt" type="checkbox" />
-                <span data-i18n="includeImagePrompt">画像生成指示を含む</span>
-              </label>
-              <label class="option-toggle">
-                <input id="format-automatic-transcript" type="checkbox" />
-                <span data-i18n="formatAutomaticTranscript">自動字幕を整形</span>
-              </label>
-            </div>
-          </div>
-          <div class="display-mode-control" role="group" aria-labelledby="transcript-display-mode-label">
-            <span class="label" id="transcript-display-mode-label" data-i18n="transcriptDisplayModeLabel">字幕表示</span>
-            <div class="segmented-control">
-              <label>
-                <input type="radio" name="transcript-display-mode" value="plain" />
-                <span data-i18n="plainTranscript">通常</span>
-              </label>
-              <label>
-                <input type="radio" name="transcript-display-mode" value="timestamped" />
-                <span data-i18n="timestampedTranscript">タイムスタンプ付き</span>
-              </label>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -675,6 +670,7 @@ app.innerHTML = `
 
         <div class="settings-tabs" role="tablist" aria-label="Settings sections">
           <button class="settings-tab is-active" id="settings-prompts-tab" type="button" role="tab" aria-selected="true" aria-controls="settings-prompts-section" data-settings-section="prompts" data-i18n="promptsTab">プロンプト</button>
+          <button class="settings-tab" id="settings-copy-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-copy-section" data-settings-section="copy" data-i18n="copyTab">コピー</button>
           <button class="settings-tab" id="settings-display-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-display-section" data-settings-section="display" data-i18n="displayTab">表示</button>
         </div>
 
@@ -707,6 +703,40 @@ app.innerHTML = `
               <div class="settings-footer">
                 <button class="secondary-button" id="settings-reset-template" type="button" data-i18n="reset">初期状態に戻す</button>
                 <button id="settings-save-template" type="button" data-i18n="save">保存</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section settings-section-single" id="settings-copy-section" role="tabpanel" aria-labelledby="settings-copy-tab" hidden>
+            <div class="settings-editor">
+              <div>
+                <h3 class="settings-section-title" data-i18n="copySettingsTitle">コピー設定</h3>
+                <p class="hint" data-i18n="copySettingsDescription">字幕取得後にクリップボードへ入れる内容と、AIへ渡す追加指示をまとめて管理します。</p>
+              </div>
+
+              <div class="copy-option-row">
+                <label class="option-toggle">
+                  <input id="include-image-prompt" type="checkbox" />
+                  <span data-i18n="includeImagePrompt">画像生成指示を含む</span>
+                </label>
+                <label class="option-toggle">
+                  <input id="format-automatic-transcript" type="checkbox" />
+                  <span data-i18n="formatAutomaticTranscript">自動字幕を整形</span>
+                </label>
+              </div>
+
+              <div class="display-mode-control" role="group" aria-labelledby="transcript-display-mode-label">
+                <span class="label" id="transcript-display-mode-label" data-i18n="transcriptDisplayModeLabel">字幕表示</span>
+                <div class="segmented-control">
+                  <label>
+                    <input type="radio" name="transcript-display-mode" value="plain" />
+                    <span data-i18n="plainTranscript">通常</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="transcript-display-mode" value="timestamped" />
+                    <span data-i18n="timestampedTranscript">タイムスタンプ付き</span>
+                  </label>
+                </div>
               </div>
             </div>
           </section>
@@ -797,6 +827,7 @@ const settingsSaveTemplate = document.querySelector<HTMLButtonElement>("#setting
 const settingsTabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".settings-tab"));
 const outputTabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".output-tab"));
 const settingsPromptsSection = document.querySelector<HTMLElement>("#settings-prompts-section")!;
+const settingsCopySection = document.querySelector<HTMLElement>("#settings-copy-section")!;
 const settingsDisplaySection = document.querySelector<HTMLElement>("#settings-display-section")!;
 const settingsUiLanguage = document.querySelector<HTMLSelectElement>("#settings-ui-language")!;
 const settingsCompletionSound = document.querySelector<HTMLInputElement>("#settings-completion-sound")!;
@@ -1131,7 +1162,7 @@ outputTabs.forEach((tab) => {
 settingsTabs.forEach((tab) => {
   tab.addEventListener("click", () => {
     const section = tab.dataset.settingsSection;
-    if (section === "prompts" || section === "display") {
+    if (section === "prompts" || section === "copy" || section === "display") {
       showSettingsSection(section);
     }
   });
@@ -2416,6 +2447,8 @@ function openPromptSettings() {
   if (activeSettingsSection === "prompts") {
     settingsTemplateTitle.focus();
     settingsTemplateTitle.select();
+  } else if (activeSettingsSection === "copy") {
+    includeImagePrompt.focus();
   } else {
     settingsUiLanguage.focus();
   }
@@ -2444,9 +2477,10 @@ function resolvePromptTemplateId(templateId: string) {
     : promptSettings.defaultTemplateId;
 }
 
-function showSettingsSection(section: "prompts" | "display") {
+function showSettingsSection(section: "prompts" | "copy" | "display") {
   activeSettingsSection = section;
   settingsPromptsSection.hidden = section !== "prompts";
+  settingsCopySection.hidden = section !== "copy";
   settingsDisplaySection.hidden = section !== "display";
   settingsTabs.forEach((tab) => {
     const isActive = tab.dataset.settingsSection === section;
@@ -2642,8 +2676,8 @@ function loadAppSettings(): AppSettings {
       : "plain";
     const settings: AppSettings = {
       uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja",
-      includeImagePrompt: true,
-      formatAutomaticTranscript: true,
+      includeImagePrompt: parsed.includeImagePrompt !== false,
+      formatAutomaticTranscript: parsed.formatAutomaticTranscript !== false,
       transcriptDisplayMode,
       markdownThemeCss:
         typeof parsed.markdownThemeCss === "string" && parsed.markdownThemeCss.trim()
@@ -2652,7 +2686,7 @@ function loadAppSettings(): AppSettings {
       completionSoundEnabled: parsed.completionSoundEnabled !== false
     };
 
-    if ("recentUrls" in parsed || parsed.includeImagePrompt !== true || parsed.formatAutomaticTranscript !== true) {
+    if ("recentUrls" in parsed) {
       localStorage.setItem(appSettingsStorageKey, JSON.stringify(settings));
     }
 
