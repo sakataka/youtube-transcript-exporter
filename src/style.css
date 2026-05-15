@@ -200,6 +200,7 @@ h1 {
 }
 
 .app-header .input-panel {
+  position: relative;
   flex: 1 1 720px;
   min-width: 0;
   margin: 0;
@@ -208,6 +209,18 @@ h1 {
   background: transparent;
   box-shadow: none;
   padding: 0;
+}
+
+.app-header .status-message {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: calc(100% + 5px);
+  margin: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.58);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .input-panel label,
@@ -716,10 +729,29 @@ input[type="radio"]:focus {
   padding: 0 12px;
 }
 
+.output-tab:hover:not(:disabled) {
+  border-color: #f1b6b1;
+  background: #fff7f7;
+  color: #1f1f1f;
+}
+
+.output-tab:focus-visible {
+  border-color: var(--accent);
+  outline: 3px solid rgba(225, 19, 29, 0.18);
+  outline-offset: 2px;
+}
+
 .output-tab.is-active {
   border-color: var(--accent);
-  background: #fff1f1;
+  background: #ffffff;
   color: var(--accent-dark);
+}
+
+.output-tab.is-active:hover:not(:disabled),
+.output-tab.is-active:focus-visible {
+  border-color: var(--accent);
+  background: #fff4f4;
+  color: #9f0d14;
 }
 
 .output-tab-divider {

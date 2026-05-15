@@ -1367,7 +1367,7 @@ function renderCaptionOptions(captions: CaptionOption[]) {
     )
     .join("");
   captionCount.textContent = t("captionCount", captions.length);
-  captionPanel.hidden = captions.length === 0;
+  captionPanel.hidden = true;
 }
 
 function setCaptionLoading(isLoading: boolean) {
