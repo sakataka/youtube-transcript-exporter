@@ -539,7 +539,6 @@ app.innerHTML = `
         </div>
       </div>
       <div class="app-header-actions">
-        <span class="local-status" data-i18n="status">ローカル実行</span>
         <button class="secondary-button compact-button icon-label-button" id="prompt-settings-button" type="button">
           <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>

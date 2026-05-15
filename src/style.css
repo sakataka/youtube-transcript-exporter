@@ -148,19 +148,6 @@ button.compact-button {
   gap: 10px;
 }
 
-.local-status {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 0.78rem;
-  font-weight: 800;
-  padding: 0 10px;
-}
-
 .app-header .secondary-button {
   border-color: rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.08);
@@ -1250,10 +1237,6 @@ textarea[hidden] {
     display: grid;
     grid-template-columns: 1fr;
     width: 100%;
-  }
-
-  .local-status {
-    justify-content: center;
   }
 
   .workspace {
