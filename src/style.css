@@ -344,7 +344,7 @@ input[type="radio"]:focus {
 
 .meta-panel {
   display: grid;
-  grid-template-columns: minmax(210px, 1.2fr) repeat(6, minmax(0, 1fr)) minmax(240px, 1.55fr);
+  grid-template-columns: minmax(420px, 2fr) repeat(6, minmax(100px, 1fr)) minmax(260px, 1.35fr);
   gap: 0;
   overflow: hidden;
   padding: 0;
@@ -352,12 +352,12 @@ input[type="radio"]:focus {
 
 .video-preview {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-columns: 148px minmax(180px, 1fr);
   gap: 12px;
-  align-items: center;
+  align-items: start;
   min-width: 0;
   border-right: 1px solid var(--line);
-  padding: 10px 12px;
+  padding: 13px 14px;
 }
 
 .video-preview.is-text-only {
@@ -370,7 +370,7 @@ input[type="radio"]:focus {
 
 .video-preview img {
   display: block;
-  width: 112px;
+  width: 148px;
   aspect-ratio: 16 / 9;
   border-radius: 6px;
   background: #e5e7eb;
@@ -379,13 +379,6 @@ input[type="radio"]:focus {
 
 .video-preview-body {
   min-width: 0;
-}
-
-.video-preview strong {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .meta-summary-item {
@@ -410,6 +403,15 @@ input[type="radio"]:focus {
   overflow-wrap: anywhere;
   color: #171717;
   font-size: 0.96rem;
+}
+
+.meta-panel .video-preview strong {
+  display: block;
+  overflow: hidden;
+  font-size: 1rem;
+  line-height: 1.35;
+  max-height: calc(1rem * 1.35 * 3);
+  overflow-wrap: normal;
 }
 
 .meta-panel strong a {
