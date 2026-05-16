@@ -256,7 +256,6 @@ const uiText = {
   ja: {
     eyebrow: "YouTube to AI prompt tool",
     heading: "YouTube動画をAI向けに整理",
-    status: "ローカル実行",
     urlLabel: "YouTube URL",
     hint: "自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。",
     videoId: "動画ID",
@@ -357,14 +356,14 @@ const uiText = {
     noCaptions: "字幕が見つかりません。",
     listCaptionsFailed: "字幕候補の取得に失敗しました。",
     ytDlpInstallHint: "Homebrewの場合は `brew install yt-dlp` を実行してから、アプリを再起動してください。",
-    captionReady: "選択した字幕を取得できます。",
+    captionReady: "選択した字幕を取得しました。",
     selectCaption: "取得する字幕を選択してください。",
     fetchingCaptions: "字幕候補を確認しています。",
     fetchingTranscript: "選択した字幕を取得しています。",
     fetchTranscriptFailed: "取得に失敗しました。",
     transcriptCopyFailed: "取得しましたが、クリップボードにコピーできませんでした。コピーボタンを押すか、本文を選択して手動でコピーしてください。",
     copyFailed: "クリップボードにコピーできませんでした。本文を選択して手動でコピーしてください。",
-    codexPromptRequired: "字幕候補を選択してから生成AIに質問してください。",
+    codexPromptRequired: "字幕を取得してから生成AIに質問してください。",
     askingCodex: "",
     codexAnswerReady: "Codexの回答を取得しました。",
     codexAnswerFailed: "Codexから回答を取得できませんでした。",
@@ -388,7 +387,6 @@ const uiText = {
   en: {
     eyebrow: "YouTube to AI prompt tool",
     heading: "Prepare YouTube Videos for AI",
-    status: "Local app",
     urlLabel: "YouTube URL",
     hint: "Shows only captions and auto captions attached to the video, excluding auto-translated captions.",
     videoId: "Video ID",
@@ -489,14 +487,14 @@ const uiText = {
     noCaptions: "No captions found.",
     listCaptionsFailed: "Failed to fetch caption candidates.",
     ytDlpInstallHint: "If you use Homebrew, run `brew install yt-dlp`, then restart the app.",
-    captionReady: "You can get the selected caption.",
+    captionReady: "Fetched the selected caption.",
     selectCaption: "Select a caption to fetch.",
     fetchingCaptions: "Checking caption candidates.",
     fetchingTranscript: "Getting the selected caption.",
     fetchTranscriptFailed: "Failed to fetch the transcript.",
     transcriptCopyFailed: "Fetched the transcript, but could not copy it to the clipboard. Press Copy or select the text manually.",
     copyFailed: "Could not copy to the clipboard. Select the text and copy it manually.",
-    codexPromptRequired: "Choose a caption before asking AI.",
+    codexPromptRequired: "Fetch a transcript before asking AI.",
     askingCodex: "",
     codexAnswerReady: "Codex answer is ready.",
     codexAnswerFailed: "Could not get a Codex answer.",
@@ -552,7 +550,6 @@ app.innerHTML = `
             autofocus
             required
           />
-          <button id="transcript-button" type="button" disabled data-i18n="fetchTranscript">選択した字幕を取得</button>
           <button id="ask-codex-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
           <button class="secondary-button compact-button icon-label-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel">
             <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -584,6 +581,13 @@ app.innerHTML = `
 
     <section class="result-layout" aria-live="polite">
       <div class="meta-panel">
+        <div class="video-preview" id="video-preview" hidden>
+          <img id="video-thumbnail" alt="" loading="lazy" />
+          <div class="video-preview-body">
+            <span class="label" data-i18n="transcriptTitle">AI向け入力</span>
+            <strong id="video-preview-title">-</strong>
+          </div>
+        </div>
         <div class="meta-summary-item">
           <span class="label" data-i18n="selectedLanguage">選択言語</span>
           <strong id="language">-</strong>
@@ -808,7 +812,6 @@ app.innerHTML = `
 
 const form = document.querySelector<HTMLFormElement>("#caption-form")!;
 const urlInput = document.querySelector<HTMLInputElement>("#youtube-url")!;
-const transcriptButton = document.querySelector<HTMLButtonElement>("#transcript-button")!;
 const askCodexButton = document.querySelector<HTMLButtonElement>("#ask-codex-button")!;
 const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
 const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
@@ -876,6 +879,9 @@ const codexHistoryPanel = document.querySelector<HTMLElement>("#codex-history-pa
 const codexHistoryList = document.querySelector<HTMLDivElement>("#codex-history-list")!;
 const codexHistoryCount = document.querySelector<HTMLElement>("#codex-history-count")!;
 const clearCodexHistoryButton = document.querySelector<HTMLButtonElement>("#clear-codex-history")!;
+const videoPreview = document.querySelector<HTMLDivElement>("#video-preview")!;
+const videoThumbnail = document.querySelector<HTMLImageElement>("#video-thumbnail")!;
+const videoPreviewTitle = document.querySelector<HTMLElement>("#video-preview-title")!;
 const followUpModal = document.querySelector<HTMLDivElement>("#follow-up-modal")!;
 const followUpQuestion = document.querySelector<HTMLTextAreaElement>("#follow-up-question")!;
 const followUpClose = document.querySelector<HTMLButtonElement>("#follow-up-close")!;
@@ -951,16 +957,13 @@ captionList.addEventListener("change", (event) => {
 
   selectedCaption = latestCaptionList?.captions[Number(target.value)] ?? null;
   transcriptRequestToken += 1;
-  transcriptButton.disabled = !selectedCaption;
   clearTranscript();
   askCodexButton.disabled = !selectedCaption;
   updateSelectedLanguage();
   updateCaptionSource();
-  showMessage(t("captionReady"));
-});
-
-transcriptButton.addEventListener("click", async () => {
-  await fetchSelectedTranscript({ copyAfterFetch: true });
+  if (selectedCaption) {
+    void fetchSelectedTranscript({ copyAfterFetch: false });
+  }
 });
 
 askCodexButton.addEventListener("click", async () => {
@@ -1381,7 +1384,7 @@ function renderCaptionOptions(captions: CaptionOption[]) {
     )
     .join("");
   captionCount.textContent = t("captionCount", captions.length);
-  captionPanel.hidden = true;
+  captionPanel.hidden = captions.length <= 1;
 }
 
 function setCaptionLoading(isLoading: boolean) {
@@ -1389,9 +1392,9 @@ function setCaptionLoading(isLoading: boolean) {
 }
 
 function setTranscriptLoading(isLoading: boolean) {
-  transcriptButton.disabled = isLoading || !selectedCaption;
-  transcriptButton.textContent = isLoading ? t("fetchTranscriptLoading") : t("fetchTranscript");
-  transcriptButton.classList.toggle("is-loading", isLoading);
+  askCodexButton.disabled = isLoading || (!latestTranscript && !selectedCaption);
+  askCodexButton.textContent = isLoading ? t("fetchTranscriptLoading") : t("askCodex");
+  askCodexButton.classList.toggle("is-loading", isLoading);
 }
 
 function setCodexLoading(isLoading: boolean) {
@@ -1448,6 +1451,7 @@ async function fetchSelectedTranscript(options: { copyAfterFetch: boolean }) {
       }
     }
 
+    showMessage(t("captionReady"));
     return payload;
   } catch (error) {
     if (requestToken !== transcriptRequestToken) {
@@ -1467,6 +1471,7 @@ async function fetchSelectedTranscript(options: { copyAfterFetch: boolean }) {
 function applyTranscriptPayload(payload: TranscriptSuccess, requestedCaption: CaptionOption) {
   latestTranscript = payload;
   title.textContent = payload.title || t("transcriptTitle");
+  renderVideoPreview(payload.title, payload.thumbnailUrl);
   videoDuration.textContent = payload.duration || "-";
   renderCanonicalUrl(payload.webpageUrl);
   viewCount.textContent = formatCount(payload.viewCount);
@@ -1481,6 +1486,22 @@ function applyTranscriptPayload(payload: TranscriptSuccess, requestedCaption: Ca
   renderTranscriptSearch();
   askCodexButton.disabled = payload.text.length === 0;
   renderOutput();
+}
+
+function renderVideoPreview(videoTitle = "", thumbnailUrl?: string) {
+  const titleText = videoTitle.trim();
+  videoPreviewTitle.textContent = titleText || "-";
+
+  if (!thumbnailUrl) {
+    videoThumbnail.removeAttribute("src");
+    videoPreview.hidden = !titleText;
+    videoPreview.classList.add("is-text-only");
+    return;
+  }
+
+  videoThumbnail.src = thumbnailUrl;
+  videoPreview.hidden = false;
+  videoPreview.classList.remove("is-text-only");
 }
 
 async function checkCaptionCandidates(url: string) {
@@ -1500,15 +1521,30 @@ async function checkCaptionCandidates(url: string) {
     latestCaptionList = payload;
     selectedCaption = payload.captions[0] ?? null;
     title.textContent = payload.title || t("transcriptTitle");
+    renderVideoPreview(payload.title, payload.thumbnailUrl);
     videoDuration.textContent = payload.duration || "-";
     renderCanonicalUrl(payload.webpageUrl);
     viewCount.textContent = formatCount(payload.viewCount);
     renderCaptionOptions(payload.captions);
-    transcriptButton.disabled = !selectedCaption;
     askCodexButton.disabled = !selectedCaption;
-    showMessage(selectedCaption ? t("chooseCaption") : t("noCaptions"));
     updateSelectedLanguage();
     updateCaptionSource();
+
+    if (!selectedCaption) {
+      showMessage(t("noCaptions"));
+      return;
+    }
+
+    if (payload.captions.length === 1) {
+      showMessage(t("fetchingTranscript"));
+      const transcript = await fetchSelectedTranscript({ copyAfterFetch: false });
+      if (requestToken === captionRequestToken && transcript) {
+        await askCodexWithTranscript(transcript);
+      }
+      return;
+    }
+
+    showMessage(t("chooseCaption"));
   } catch (error) {
     if (requestToken !== captionRequestToken) {
       return;
@@ -1547,14 +1583,12 @@ function clearResult() {
   captionCount.textContent = t("captionCount", 0);
   captionPanel.hidden = true;
   title.textContent = t("transcriptTitle");
+  renderVideoPreview();
   language.textContent = "-";
   videoDuration.textContent = "-";
   renderCanonicalUrl(undefined);
   viewCount.textContent = "-";
   updateCaptionSource();
-  transcriptButton.disabled = true;
-  transcriptButton.textContent = t("fetchTranscript");
-  transcriptButton.classList.remove("is-loading");
   clearTranscript();
   message.classList.remove("error");
   message.hidden = true;
@@ -1573,7 +1607,6 @@ function clearTranscript() {
   stopCodexPolling();
   charCount.textContent = "0";
   askCodexButton.disabled = !selectedCaption;
-  transcriptButton.textContent = t("fetchTranscript");
   isTranscriptSearchExpanded = false;
   transcriptSearchInput.value = "";
   latestSelectedOutputText = "";
