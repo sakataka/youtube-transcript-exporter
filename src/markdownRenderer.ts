@@ -178,6 +178,7 @@ function renderListItemMarkdown(text: string, options: RenderMarkdownOptions) {
 export function normalizeMarkdownForDisplay(markdown: string) {
   return markdown
     .replace(/\r\n?/g, "\n")
+    .replace(/^\s*#\s*(?:\n\s*)+/, "")
     .replace(/([^\n])\s*(#{1,4}\s+\d+[.)]\s+[^\n]+)/g, "$1\n\n$2")
     .replace(/([^\n])\s+(\d+[.)]\s+(?:\*\*|__)[^\n]+?(?:\*\*|__))/g, "$1\n\n$2");
 }

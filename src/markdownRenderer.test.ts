@@ -45,6 +45,10 @@ describe("markdown renderer", () => {
     );
   });
 
+  test("removes a stray leading heading marker before the first answer section", () => {
+    expect(normalizeMarkdownForDisplay("#\n\n# 1. この動画の概要")).toBe("# 1. この動画の概要");
+  });
+
   test("renders plain numbered section titles as headings", () => {
     const html = renderMarkdown(["# 1. この動画の概要", "", "本文です。", "", "2. 重要なポイント"].join("\n"));
 
