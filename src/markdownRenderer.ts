@@ -165,7 +165,7 @@ export function renderMarkdown(markdown: string, options: RenderMarkdownOptions 
   }
   flushOpenBlocks();
 
-  return blocks.join("");
+  return stripStrayLeadingHashParagraphs(blocks).join("");
 }
 
 function renderListItemMarkdown(text: string, options: RenderMarkdownOptions) {
@@ -210,7 +210,35 @@ function isStrayHeadingMarkerLine(line: string) {
 }
 
 function stripInvisibleCharacters(text: string) {
-  return text.replace(/[\u200b-\u200d\ufeff]/g, "");
+  return text.replace(/[\p{Cf}\uFE00-\uFE0F]/gu, "");
+}
+
+function stripStrayLeadingHashParagraphs(blocks: string[]) {
+  let index = 0;
+  while (index < blocks.length && isStrayHashParagraph(blocks[index])) {
+    index += 1;
+  }
+
+  return index > 0 ? blocks.slice(index) : blocks;
+}
+
+function isStrayHashParagraph(block: string) {
+  const paragraph = block.match(/^<p>([\s\S]*)<\/p>$/);
+  if (!paragraph) {
+    return false;
+  }
+
+  return normalizeHashMarkerText(paragraph[1]) === "#";
+}
+
+function normalizeHashMarkerText(text: string) {
+  return stripInvisibleCharacters(decodeBasicHtmlEntities(text)).replace(/^\\#$/, "#").trim();
+}
+
+function decodeBasicHtmlEntities(text: string) {
+  return text
+    .replace(/&#35;|&#x23;|&num;/gi, "#")
+    .replace(/&nbsp;/gi, " ");
 }
 
 function renderParagraphBlocks(text: string, options: RenderMarkdownOptions) {
