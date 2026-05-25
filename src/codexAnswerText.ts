@@ -1,5 +1,7 @@
+import { normalizeMarkdownForDisplay } from "./markdownRenderer";
+
 export function getCodexAnswerTextForCopy(markdown: string) {
-  return stripMarkdownImages(stripGeneratedImageSection(markdown)).trim();
+  return normalizeMarkdownForDisplay(stripMarkdownImages(stripGeneratedImageSection(markdown))).trim();
 }
 
 function stripGeneratedImageSection(markdown: string) {

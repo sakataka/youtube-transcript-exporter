@@ -21,4 +21,10 @@ describe("codex answer text", () => {
 
     expect(getCodexAnswerTextForCopy(answer)).toBe("本文です。\n\n続きです。");
   });
+
+  test("removes a stray leading heading marker from copied answer text", () => {
+    const answer = "\uFEFF#\u200B\n\n# 1. この動画の概要\n\n本文です。";
+
+    expect(getCodexAnswerTextForCopy(answer)).toBe("# 1. この動画の概要\n\n本文です。");
+  });
 });

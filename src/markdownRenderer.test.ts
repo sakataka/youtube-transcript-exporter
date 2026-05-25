@@ -32,6 +32,29 @@ describe("markdown renderer", () => {
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
   });
 
+  test("recovers URL suffixes that are accidentally parsed as markdown link targets", () => {
+    const html = renderMarkdown(
+      "出典: [https://www.moj.go.jp/isa/applications/resources/newimmiiact](3qa.html)"
+    );
+
+    expect(html).toContain(
+      'href="https://www.moj.go.jp/isa/applications/resources/newimmiiact3qa.html"'
+    );
+    expect(html).toContain(
+      ">https://www.moj.go.jp/isa/applications/resources/newimmiiact3qa.html</a>"
+    );
+  });
+
+  test("auto-links full web URLs with digits and underscores", () => {
+    const html = renderMarkdown(
+      "https://www.moj.go.jp/isa/applications/resources/newimmiiact3evaluate_index.html"
+    );
+
+    expect(html).toContain(
+      'href="https://www.moj.go.jp/isa/applications/resources/newimmiiact3evaluate_index.html"'
+    );
+  });
+
   test("normalizes inline numbered sections", () => {
     expect(normalizeMarkdownForDisplay("Intro 1. **概要** text")).toBe("Intro\n\n1. **概要** text");
   });
@@ -47,6 +70,14 @@ describe("markdown renderer", () => {
 
   test("removes a stray leading heading marker before the first answer section", () => {
     expect(normalizeMarkdownForDisplay("#\n\n# 1. この動画の概要")).toBe("# 1. この動画の概要");
+  });
+
+  test("removes invisible-character variants of a stray leading heading marker", () => {
+    expect(normalizeMarkdownForDisplay("\uFEFF#\u200B\n\n1. この動画の概要")).toBe("1. この動画の概要");
+  });
+
+  test("removes repeated stray leading heading marker lines", () => {
+    expect(normalizeMarkdownForDisplay("\n#\n\n#\n\n# 1. この動画の概要")).toBe("# 1. この動画の概要");
   });
 
   test("renders plain numbered section titles as headings", () => {

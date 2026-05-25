@@ -176,11 +176,41 @@ function renderListItemMarkdown(text: string, options: RenderMarkdownOptions) {
 }
 
 export function normalizeMarkdownForDisplay(markdown: string) {
-  return markdown
-    .replace(/\r\n?/g, "\n")
-    .replace(/^\s*#\s*(?:\n\s*)+/, "")
+  return stripStrayLeadingHeadingMarker(markdown.replace(/\r\n?/g, "\n"))
     .replace(/([^\n])\s*(#{1,4}\s+\d+[.)]\s+[^\n]+)/g, "$1\n\n$2")
     .replace(/([^\n])\s+(\d+[.)]\s+(?:\*\*|__)[^\n]+?(?:\*\*|__))/g, "$1\n\n$2");
+}
+
+function stripStrayLeadingHeadingMarker(markdown: string) {
+  const lines = markdown.split("\n");
+  let index = 0;
+  let shouldStrip = false;
+
+  while (index < lines.length && isBlankDisplayLine(lines[index])) {
+    index += 1;
+  }
+
+  while (index < lines.length && isStrayHeadingMarkerLine(lines[index])) {
+    shouldStrip = true;
+    index += 1;
+    while (index < lines.length && isBlankDisplayLine(lines[index])) {
+      index += 1;
+    }
+  }
+
+  return shouldStrip ? lines.slice(index).join("\n") : markdown;
+}
+
+function isBlankDisplayLine(line: string) {
+  return stripInvisibleCharacters(line).trim() === "";
+}
+
+function isStrayHeadingMarkerLine(line: string) {
+  return stripInvisibleCharacters(line).trim() === "#";
+}
+
+function stripInvisibleCharacters(text: string) {
+  return text.replace(/[\u200b-\u200d\ufeff]/g, "");
 }
 
 function renderParagraphBlocks(text: string, options: RenderMarkdownOptions) {
@@ -296,6 +326,11 @@ function renderInlineMarkdown(text: string, options: RenderMarkdownOptions) {
       return `<img src="${escapeHtml(safeUrl)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
     })
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label: string, url: string) => {
+      const recoveredUrl = recoverSplitMarkdownUrl(label, url);
+      if (recoveredUrl) {
+        return `<a href="${escapeHtml(recoveredUrl)}" target="_blank" rel="noreferrer">${escapeHtml(recoveredUrl)}</a>`;
+      }
+
       const safeUrl = sanitizeMarkdownUrl(url);
       if (!safeUrl) {
         return label;
@@ -363,6 +398,19 @@ function sanitizeMarkdownUrl(value: string) {
   }
 
   return "";
+}
+
+function recoverSplitMarkdownUrl(label: string, url: string) {
+  if (!/^https?:\/\//i.test(label) || sanitizeMarkdownUrl(url)) {
+    return "";
+  }
+
+  const suffix = url.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._~/?#[\]@!$&'()*+,;=%-]*$/.test(suffix)) {
+    return "";
+  }
+
+  return sanitizeMarkdownUrl(`${label}${suffix}`);
 }
 
 export function escapeHtml(value: string) {
