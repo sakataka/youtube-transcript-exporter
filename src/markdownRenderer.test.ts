@@ -68,31 +68,6 @@ describe("markdown renderer", () => {
     );
   });
 
-  test("removes a stray leading heading marker before the first answer section", () => {
-    expect(normalizeMarkdownForDisplay("#\n\n# 1. この動画の概要")).toBe("# 1. この動画の概要");
-  });
-
-  test("removes invisible-character variants of a stray leading heading marker", () => {
-    expect(normalizeMarkdownForDisplay("\uFEFF#\u200B\n\n1. この動画の概要")).toBe("1. この動画の概要");
-  });
-
-  test("removes repeated stray leading heading marker lines", () => {
-    expect(normalizeMarkdownForDisplay("\n#\n\n#\n\n# 1. この動画の概要")).toBe("# 1. この動画の概要");
-  });
-
-  test("removes stray leading hash paragraphs even when hidden characters reach rendering", () => {
-    const html = renderMarkdown("\u2060#\uFE0F\n\n# 1. この動画の概要");
-
-    expect(html).not.toContain("<p>#");
-    expect(html).toStartWith("<h1>1. この動画の概要</h1>");
-  });
-
-  test("removes escaped stray leading hash paragraphs as a final display guard", () => {
-    const html = renderMarkdown("\\#\n\n# 1. この動画の概要");
-
-    expect(html).toStartWith("<h1>1. この動画の概要</h1>");
-  });
-
   test("renders plain numbered section titles as headings", () => {
     const html = renderMarkdown(["# 1. この動画の概要", "", "本文です。", "", "2. 重要なポイント"].join("\n"));
 

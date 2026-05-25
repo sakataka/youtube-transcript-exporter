@@ -165,7 +165,7 @@ export function renderMarkdown(markdown: string, options: RenderMarkdownOptions 
   }
   flushOpenBlocks();
 
-  return stripStrayLeadingHashParagraphs(blocks).join("");
+  return blocks.join("");
 }
 
 function renderListItemMarkdown(text: string, options: RenderMarkdownOptions) {
@@ -176,69 +176,10 @@ function renderListItemMarkdown(text: string, options: RenderMarkdownOptions) {
 }
 
 export function normalizeMarkdownForDisplay(markdown: string) {
-  return stripStrayLeadingHeadingMarker(markdown.replace(/\r\n?/g, "\n"))
+  return markdown
+    .replace(/\r\n?/g, "\n")
     .replace(/([^\n])\s*(#{1,4}\s+\d+[.)]\s+[^\n]+)/g, "$1\n\n$2")
     .replace(/([^\n])\s+(\d+[.)]\s+(?:\*\*|__)[^\n]+?(?:\*\*|__))/g, "$1\n\n$2");
-}
-
-function stripStrayLeadingHeadingMarker(markdown: string) {
-  const lines = markdown.split("\n");
-  let index = 0;
-  let shouldStrip = false;
-
-  while (index < lines.length && isBlankDisplayLine(lines[index])) {
-    index += 1;
-  }
-
-  while (index < lines.length && isStrayHeadingMarkerLine(lines[index])) {
-    shouldStrip = true;
-    index += 1;
-    while (index < lines.length && isBlankDisplayLine(lines[index])) {
-      index += 1;
-    }
-  }
-
-  return shouldStrip ? lines.slice(index).join("\n") : markdown;
-}
-
-function isBlankDisplayLine(line: string) {
-  return stripInvisibleCharacters(line).trim() === "";
-}
-
-function isStrayHeadingMarkerLine(line: string) {
-  return stripInvisibleCharacters(line).trim() === "#";
-}
-
-function stripInvisibleCharacters(text: string) {
-  return text.replace(/[\p{Cf}\uFE00-\uFE0F]/gu, "");
-}
-
-function stripStrayLeadingHashParagraphs(blocks: string[]) {
-  let index = 0;
-  while (index < blocks.length && isStrayHashParagraph(blocks[index])) {
-    index += 1;
-  }
-
-  return index > 0 ? blocks.slice(index) : blocks;
-}
-
-function isStrayHashParagraph(block: string) {
-  const paragraph = block.match(/^<p>([\s\S]*)<\/p>$/);
-  if (!paragraph) {
-    return false;
-  }
-
-  return normalizeHashMarkerText(paragraph[1]) === "#";
-}
-
-function normalizeHashMarkerText(text: string) {
-  return stripInvisibleCharacters(decodeBasicHtmlEntities(text)).replace(/^\\#$/, "#").trim();
-}
-
-function decodeBasicHtmlEntities(text: string) {
-  return text
-    .replace(/&#35;|&#x23;|&num;/gi, "#")
-    .replace(/&nbsp;/gi, " ");
 }
 
 function renderParagraphBlocks(text: string, options: RenderMarkdownOptions) {
