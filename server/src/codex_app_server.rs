@@ -51,6 +51,12 @@ struct TurnOutput {
     images: Vec<String>,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct AgentMessageText {
+    phase: Option<String>,
+    text: String,
+}
+
 #[allow(dead_code)]
 pub fn ask(prompt: &str, generate_image: bool) -> Result<String, CodexAppServerError> {
     ask_with_control(prompt, generate_image, CodexRunControl::default())
@@ -317,8 +323,8 @@ fn run_turn(
     )?;
 
     let mut line = String::new();
-    let mut answer = String::new();
-    let mut completed_answer = String::new();
+    let mut delta_answer = String::new();
+    let mut completed_messages: Vec<AgentMessageText> = Vec::new();
     let mut generated_images: Vec<String> = Vec::new();
 
     loop {
@@ -362,14 +368,12 @@ fn run_turn(
         match method {
             "item/agentMessage/delta" => {
                 if let Some(delta) = extract_delta(&message) {
-                    answer.push_str(delta);
+                    delta_answer.push_str(delta);
                 }
             }
             "item/completed" => {
-                if answer.is_empty() {
-                    if let Some(text) = extract_completed_agent_message(&message) {
-                        completed_answer.push_str(text);
-                    }
+                if let Some(message) = extract_completed_agent_message(&message) {
+                    completed_messages.push(message);
                 }
                 if let Some(image_markdown) = extract_image_generation_markdown(&message) {
                     generated_images.push(image_markdown);
@@ -395,11 +399,7 @@ fn run_turn(
         }
     }
 
-    let text = if answer.trim().is_empty() {
-        completed_answer.trim().to_string()
-    } else {
-        answer.trim().to_string()
-    };
+    let text = select_turn_text(&completed_messages, &delta_answer);
 
     debug_log::append_event(
         "codex_app_server.turn.completed",
@@ -407,6 +407,7 @@ fn run_turn(
             "requestId": request_id,
             "elapsedMs": turn_started_at.elapsed().as_millis(),
             "textChars": text.chars().count(),
+            "textPreview": debug_log::truncate_for_log(&text, 300),
             "imageCount": generated_images.len(),
         }),
     );
@@ -524,16 +525,64 @@ fn extract_delta(message: &Value) -> Option<&str> {
         .and_then(Value::as_str)
 }
 
-fn extract_completed_agent_message(message: &Value) -> Option<&str> {
+fn extract_completed_agent_message(message: &Value) -> Option<AgentMessageText> {
     let item = message.pointer("/params/item")?;
-    if item.get("type").and_then(Value::as_str) != Some("agent_message") {
+    if !matches!(
+        item.get("type").and_then(Value::as_str),
+        Some("agentMessage" | "agent_message")
+    ) {
         return None;
     }
 
-    item.pointer("/text")
+    let text = item
+        .pointer("/text")
         .or_else(|| item.pointer("/message"))
         .or_else(|| item.pointer("/content/0/text"))
         .and_then(Value::as_str)
+        .map(str::to_string)?;
+    let phase = item
+        .pointer("/phase")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    Some(AgentMessageText { phase, text })
+}
+
+fn select_turn_text(completed_messages: &[AgentMessageText], delta_answer: &str) -> String {
+    let final_answer = join_agent_messages(completed_messages.iter().filter(|message| {
+        message.phase.as_deref() == Some("final_answer")
+    }));
+    if !final_answer.is_empty() {
+        return final_answer;
+    }
+
+    let unknown_phase = join_agent_messages(
+        completed_messages
+            .iter()
+            .filter(|message| message.phase.is_none()),
+    );
+    if !unknown_phase.is_empty() {
+        return unknown_phase;
+    }
+
+    let non_commentary = join_agent_messages(completed_messages.iter().filter(|message| {
+        message.phase.as_deref() != Some("commentary")
+    }));
+    if !non_commentary.is_empty() {
+        return non_commentary;
+    }
+
+    delta_answer.trim().to_string()
+}
+
+fn join_agent_messages<'a>(messages: impl Iterator<Item = &'a AgentMessageText>) -> String {
+    messages
+        .map(|message| message.text.trim())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+        .trim()
+        .to_string()
 }
 
 fn extract_image_generation_markdown(message: &Value) -> Option<String> {
@@ -597,7 +646,7 @@ fn is_likely_base64_image(value: &str) -> bool {
 mod tests {
     use super::{
         extract_completed_agent_message, extract_delta, extract_image_generation_markdown,
-        extract_raw_image_generation_markdown,
+        extract_raw_image_generation_markdown, select_turn_text, AgentMessageText,
     };
     use serde_json::json;
 
@@ -625,7 +674,65 @@ mod tests {
 
         assert_eq!(
             extract_completed_agent_message(&message),
-            Some("完了した回答")
+            Some(AgentMessageText {
+                phase: None,
+                text: "完了した回答".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn extracts_completed_agent_message_phase_from_current_protocol() {
+        let message = json!({
+            "method": "item/completed",
+            "params": {
+                "item": {
+                    "type": "agentMessage",
+                    "id": "item_1",
+                    "phase": "final_answer",
+                    "text": "# 1. この動画の概要"
+                }
+            }
+        });
+
+        assert_eq!(
+            extract_completed_agent_message(&message),
+            Some(AgentMessageText {
+                phase: Some("final_answer".to_string()),
+                text: "# 1. この動画の概要".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn selects_final_answer_over_commentary_and_delta_text() {
+        let completed_messages = vec![
+            AgentMessageText {
+                phase: Some("commentary".to_string()),
+                text: "#".to_string(),
+            },
+            AgentMessageText {
+                phase: Some("final_answer".to_string()),
+                text: "# 1. この動画の概要\n\n本文です。".to_string(),
+            },
+        ];
+
+        assert_eq!(
+            select_turn_text(&completed_messages, "#\n\n# 1. この動画の概要"),
+            "# 1. この動画の概要\n\n本文です。"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_unknown_phase_completed_message_before_delta_text() {
+        let completed_messages = vec![AgentMessageText {
+            phase: None,
+            text: "完了済みの回答".to_string(),
+        }];
+
+        assert_eq!(
+            select_turn_text(&completed_messages, "途中 delta"),
+            "完了済みの回答"
         );
     }
 
