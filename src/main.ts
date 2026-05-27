@@ -28,6 +28,7 @@ import type {
   PromptSettings,
   PromptTemplate,
   StoredAppSettings,
+  TimedTranscriptSegment,
   TranscriptDisplayMode,
   TranscriptSuccess
 } from "./types";
@@ -914,6 +915,13 @@ let completionAudioContext: AudioContext | null = null;
 let completionAudioPrimed = false;
 let elementToRestoreFocus: HTMLElement | null = null;
 let followUpContext: { kind: CodexQuestionKind; selectedExcerpt: string } | null = null;
+let transcriptDerivedCache: {
+  transcript: TranscriptSuccess;
+  formatAutomaticTranscript: boolean;
+  transcriptDisplayMode: TranscriptDisplayMode;
+  displayText?: string;
+  searchableSegments?: TimedTranscriptSegment[];
+} | null = null;
 
 clearUrlInputOnLaunch();
 renderPromptTemplates();
@@ -2294,11 +2302,37 @@ function normalizeCodexHistoryEntry(value: unknown): CodexHistoryEntry | null {
 }
 
 function getTranscriptTextForDisplay(transcript: TranscriptSuccess) {
-  return buildTranscriptTextForDisplay(transcript, appSettings);
+  const cache = getTranscriptDerivedCache(transcript);
+  if (cache.displayText === undefined) {
+    cache.displayText = buildTranscriptTextForDisplay(transcript, appSettings);
+  }
+  return cache.displayText;
 }
 
 function getSearchableTranscriptSegments(transcript: TranscriptSuccess) {
-  return getSearchableSegments(transcript, appSettings);
+  const cache = getTranscriptDerivedCache(transcript);
+  if (cache.searchableSegments === undefined) {
+    cache.searchableSegments = getSearchableSegments(transcript, appSettings);
+  }
+  return cache.searchableSegments;
+}
+
+function getTranscriptDerivedCache(transcript: TranscriptSuccess) {
+  if (
+    transcriptDerivedCache &&
+    transcriptDerivedCache.transcript === transcript &&
+    transcriptDerivedCache.formatAutomaticTranscript === appSettings.formatAutomaticTranscript &&
+    transcriptDerivedCache.transcriptDisplayMode === appSettings.transcriptDisplayMode
+  ) {
+    return transcriptDerivedCache;
+  }
+
+  transcriptDerivedCache = {
+    transcript,
+    formatAutomaticTranscript: appSettings.formatAutomaticTranscript,
+    transcriptDisplayMode: appSettings.transcriptDisplayMode
+  };
+  return transcriptDerivedCache;
 }
 
 function updateTranscriptCharacterCount() {
@@ -2350,17 +2384,18 @@ function renderTranscriptSearch() {
   transcriptSearchCount.textContent =
     matches.length === 0 ? t("transcriptSearchEmpty") : t("transcriptSearchCount", matches.length);
   transcriptSearchResults.innerHTML = matches
-    .map(
-      (segment) => `
-        <div class="search-result" role="button" tabindex="0" data-timestamp-url="${escapeHtml(buildTimestampUrl(segment.startSeconds))}">
+    .map((segment) => {
+      const timestampUrl = buildTimestampUrl(segment.startSeconds);
+      return `
+        <div class="search-result" role="button" tabindex="0" data-timestamp-url="${escapeHtml(timestampUrl)}">
           <div class="search-result-body">
             <strong>${escapeHtml(segment.startLabel)}</strong>
             <p>${escapeHtml(truncateSearchResult(segment.text))}</p>
           </div>
-          <button class="secondary-button compact-button" type="button" data-timestamp-url="${escapeHtml(buildTimestampUrl(segment.startSeconds))}" data-i18n="openTimestamp">${t("openTimestamp")}</button>
+          <button class="secondary-button compact-button" type="button" data-timestamp-url="${escapeHtml(timestampUrl)}" data-i18n="openTimestamp">${t("openTimestamp")}</button>
         </div>
-      `
-    )
+      `;
+    })
     .join("");
 }
 

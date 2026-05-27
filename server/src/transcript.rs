@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     env,
     ffi::OsString,
     fs,
@@ -590,25 +590,22 @@ fn collect_tracks(
 }
 
 fn dedupe_caption_tracks(tracks: Vec<CaptionTrack>) -> Vec<CaptionTrack> {
-    let mut seen = HashSet::new();
+    let mut seen = HashMap::new();
     let mut deduped = Vec::new();
 
     for track in tracks {
         let key = caption_dedupe_key(&track);
 
-        if seen.insert(key.clone()) {
-            deduped.push(track);
-            continue;
-        }
-
-        if let Some(existing) = deduped
-            .iter_mut()
-            .find(|existing| caption_dedupe_key(existing) == key)
-        {
+        if let Some(index) = seen.get(&key).copied() {
+            let existing = &mut deduped[index];
             if should_replace_caption_track(existing, &track) {
                 *existing = track;
             }
+            continue;
         }
+
+        seen.insert(key, deduped.len());
+        deduped.push(track);
     }
 
     deduped

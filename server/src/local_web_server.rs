@@ -114,6 +114,7 @@ struct HttpResponse {
 }
 
 const MAX_CODEX_PROMPT_CHARS: usize = 200_000;
+const MAX_HTTP_BODY_BYTES: usize = 2 * 1024 * 1024;
 
 pub fn run() -> Result<(), String> {
     let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
@@ -198,6 +199,10 @@ fn read_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
         .find(|(key, _)| key.eq_ignore_ascii_case("content-length"))
         .and_then(|(_, value)| value.trim().parse::<usize>().ok())
         .unwrap_or(0);
+    if content_length > MAX_HTTP_BODY_BYTES {
+        return Err("HTTP bodyが大きすぎます。".to_string());
+    }
+
     let body_start = header_end + 4;
     while buffer.len() < body_start + content_length {
         let read = stream
