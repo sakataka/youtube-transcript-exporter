@@ -195,10 +195,7 @@ pub async fn fetch_transcript(
     let video_id = parse_youtube_video_id(url)?;
     let info = get_ytdlp_info(url).await?;
     let tracks = if let Some((language, source)) = requested_caption {
-        get_selectable_tracks(&info)
-            .into_iter()
-            .filter(|track| track.language == language && track.source == source)
-            .collect::<Vec<_>>()
+        get_requested_tracks(&info, &language, source)
     } else {
         rank_caption_tracks(&info)
     };
@@ -484,6 +481,20 @@ fn get_selectable_tracks(info: &YtDlpInfo) -> Vec<CaptionTrack> {
     dedupe_caption_tracks(tracks)
 }
 
+fn get_requested_tracks(
+    info: &YtDlpInfo,
+    language: &str,
+    source: CaptionSource,
+) -> Vec<CaptionTrack> {
+    let captions = match &source {
+        CaptionSource::Manual => info.subtitles.as_ref(),
+        CaptionSource::Automatic => info.automatic_captions.as_ref(),
+    };
+    collect_track_for_language(captions, source, language)
+        .into_iter()
+        .collect()
+}
+
 fn format_youtube_date(value: Option<&String>) -> Option<String> {
     let value = value?.trim();
 
@@ -565,28 +576,49 @@ fn collect_tracks(
     let mut tracks = Vec::new();
 
     for (language, formats_value) in captions {
-        let Ok(formats) = serde_json::from_value::<Vec<YtDlpCaption>>(formats_value.clone()) else {
-            continue;
-        };
-        let selectable = formats
-            .into_iter()
-            .filter(|format| is_selectable_caption_format(language, format))
-            .collect::<Vec<_>>();
-        let selected = selectable.first();
-
-        if let Some(selected) = selected {
-            if let Some(url) = selected.url.clone() {
-                tracks.push(CaptionTrack {
-                    language: language.clone(),
-                    name: selected.name.clone().unwrap_or_else(|| language.clone()),
-                    source: source.clone(),
-                    url,
-                });
-            }
+        if let Some(track) = caption_track_from_formats(language, formats_value, source.clone()) {
+            tracks.push(track);
         }
     }
 
     tracks
+}
+
+fn collect_track_for_language(
+    captions: Option<&serde_json::Map<String, serde_json::Value>>,
+    source: CaptionSource,
+    language: &str,
+) -> Option<CaptionTrack> {
+    let Some(formats_value) = captions.and_then(|captions| captions.get(language)) else {
+        return None;
+    };
+    caption_track_from_formats(language, formats_value, source)
+}
+
+fn caption_track_from_formats(
+    language: &str,
+    formats_value: &serde_json::Value,
+    source: CaptionSource,
+) -> Option<CaptionTrack> {
+    let Ok(formats) = serde_json::from_value::<Vec<YtDlpCaption>>(formats_value.clone()) else {
+        return None;
+    };
+    let Some(selected) = formats
+        .into_iter()
+        .find(|format| is_selectable_caption_format(language, format))
+    else {
+        return None;
+    };
+    let Some(url) = selected.url else {
+        return None;
+    };
+
+    Some(CaptionTrack {
+        language: language.to_string(),
+        name: selected.name.unwrap_or_else(|| language.to_string()),
+        source,
+        url,
+    })
 }
 
 fn dedupe_caption_tracks(tracks: Vec<CaptionTrack>) -> Vec<CaptionTrack> {
@@ -1190,6 +1222,27 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["ja:Manual", "en:Manual", "ja:Automatic", "fr:Automatic"]
         );
+    }
+
+    #[test]
+    fn requested_caption_lookup_only_returns_matching_source_and_language() {
+        let info = info(serde_json::json!({
+            "subtitles": {
+                "ja": [{ "ext": "vtt", "url": "https://example.com/ja-manual.vtt" }],
+                "en": [{ "ext": "vtt", "url": "https://example.com/en-manual.vtt" }]
+            },
+            "automatic_captions": {
+                "ja": [{ "ext": "vtt", "url": "https://example.com/ja-auto.vtt" }],
+                "fr": [{ "ext": "vtt", "url": "https://example.com/fr-auto.vtt" }]
+            }
+        }));
+
+        let tracks = get_requested_tracks(&info, "ja", CaptionSource::Automatic);
+
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].source, CaptionSource::Automatic);
+        assert_eq!(tracks[0].language, "ja");
+        assert_eq!(tracks[0].url, "https://example.com/ja-auto.vtt");
     }
 
     #[test]

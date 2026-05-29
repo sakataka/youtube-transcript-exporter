@@ -38,6 +38,11 @@ type DebugLogReadResult = {
   content: string;
 };
 
+type SearchableTranscriptEntry = {
+  segment: TimedTranscriptSegment;
+  normalizedText: string;
+};
+
 const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1";
 const appSettingsStorageKey = "youtube-transcript-exporter.app-settings.v1";
 const codexHistoryStorageKey = "youtube-ai-brief.codex-history.v1";
@@ -921,7 +926,9 @@ let transcriptDerivedCache: {
   transcriptDisplayMode: TranscriptDisplayMode;
   displayText?: string;
   searchableSegments?: TimedTranscriptSegment[];
+  searchableIndex?: SearchableTranscriptEntry[];
 } | null = null;
+let codexMarkdownCache: { markdown: string; timestampBaseUrl: string; html: string } | null = null;
 
 clearUrlInputOnLaunch();
 renderPromptTemplates();
@@ -985,20 +992,21 @@ askCodexButton.addEventListener("click", async () => {
 });
 
 async function askCodexWithTranscript(transcript: TranscriptSuccess) {
-  const prompt = buildAnalysisPrompt(transcript, getSelectedPromptTemplate(), {
+  const template = getSelectedPromptTemplate();
+  const prompt = buildAnalysisPrompt(transcript, template, {
     includeImageInstruction: false
   });
   appendDebugLog("frontend.codex_prompt.built", {
-    templateId: getSelectedPromptTemplate().id,
+    templateId: template.id,
     generateImage: appSettings.includeImagePrompt,
     promptChars: prompt.length,
     promptPreview: truncateForLog(prompt, 8000)
   });
   await startCodexRequest(prompt, {
     questionKind: "initial",
-    questionText: getSelectedPromptTemplate().label,
+    questionText: template.label,
     selectedExcerpt: "",
-    templateId: getSelectedPromptTemplate().id,
+    templateId: template.id,
     generateImage: appSettings.includeImagePrompt,
     answerContext: getTranscriptAnswerContext(transcript)
   });
@@ -1800,7 +1808,21 @@ function logRenderOutput(renderStartedAt: number) {
 }
 
 function renderCodexMarkdown(markdown: string) {
-  return renderMarkdownOutput(markdown, { buildTimestampUrl });
+  const timestampBaseUrl = getTimestampBaseUrl();
+  if (
+    codexMarkdownCache &&
+    codexMarkdownCache.markdown === markdown &&
+    codexMarkdownCache.timestampBaseUrl === timestampBaseUrl
+  ) {
+    return codexMarkdownCache.html;
+  }
+
+  codexMarkdownCache = {
+    markdown,
+    timestampBaseUrl,
+    html: renderMarkdownOutput(markdown, { buildTimestampUrl })
+  };
+  return codexMarkdownCache.html;
 }
 
 function copyTextWithSelectionFallback(text: string) {
@@ -2317,6 +2339,17 @@ function getSearchableTranscriptSegments(transcript: TranscriptSuccess) {
   return cache.searchableSegments;
 }
 
+function getSearchableTranscriptIndex(transcript: TranscriptSuccess) {
+  const cache = getTranscriptDerivedCache(transcript);
+  if (cache.searchableIndex === undefined) {
+    cache.searchableIndex = getSearchableTranscriptSegments(transcript).map((segment) => ({
+      segment,
+      normalizedText: normalizeSearchText(segment.text)
+    }));
+  }
+  return cache.searchableIndex;
+}
+
 function getTranscriptDerivedCache(transcript: TranscriptSuccess) {
   if (
     transcriptDerivedCache &&
@@ -2351,11 +2384,11 @@ function isTranscriptDisplayMode(value: unknown): value is TranscriptDisplayMode
 }
 
 function renderTranscriptSearch() {
-  const segments = latestTranscript ? getSearchableTranscriptSegments(latestTranscript) : [];
+  const searchIndex = latestTranscript ? getSearchableTranscriptIndex(latestTranscript) : [];
   transcriptSearchPanel.hidden = !latestTranscript || !isTranscriptSearchExpanded;
   transcriptSearchToggle.disabled = !latestTranscript;
   transcriptSearchToggle.setAttribute("aria-expanded", String(Boolean(latestTranscript && isTranscriptSearchExpanded)));
-  transcriptSearchInput.disabled = segments.length === 0;
+  transcriptSearchInput.disabled = searchIndex.length === 0;
 
   if (!latestTranscript) {
     transcriptSearchCount.textContent = t("transcriptSearchDisabled");
@@ -2363,7 +2396,7 @@ function renderTranscriptSearch() {
     return;
   }
 
-  if (segments.length === 0) {
+  if (searchIndex.length === 0) {
     transcriptSearchCount.textContent = t("transcriptSearchDisabled");
     transcriptSearchResults.innerHTML = "";
     return;
@@ -2377,8 +2410,9 @@ function renderTranscriptSearch() {
     return;
   }
 
-  const matches = segments
-    .filter((segment) => normalizeSearchText(segment.text).includes(query))
+  const matches = searchIndex
+    .filter((entry) => entry.normalizedText.includes(query))
+    .map((entry) => entry.segment)
     .slice(0, 50);
 
   transcriptSearchCount.textContent =
@@ -2462,8 +2496,11 @@ function buildAnalysisPrompt(
 }
 
 function buildTimestampUrl(startSeconds: number) {
-  const rawUrl = latestTranscript?.webpageUrl || latestCaptionList?.webpageUrl || urlInput.value.trim();
-  return buildTimestampUrlFromBase(rawUrl, startSeconds);
+  return buildTimestampUrlFromBase(getTimestampBaseUrl(), startSeconds);
+}
+
+function getTimestampBaseUrl() {
+  return latestTranscript?.webpageUrl || latestCaptionList?.webpageUrl || urlInput.value.trim();
 }
 
 function renderPromptTemplates(selectedTemplateId = promptSettings.defaultTemplateId) {

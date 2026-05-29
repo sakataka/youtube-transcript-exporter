@@ -15,13 +15,25 @@ use std::{
     thread,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
+use tokio::runtime::Runtime;
 use transcript::CaptionSource;
 use url::Url;
 
-#[derive(Default)]
 struct ServerState {
     codex_jobs: Mutex<HashMap<String, CodexJob>>,
     codex_job_counter: AtomicU64,
+    runtime: Runtime,
+}
+
+impl ServerState {
+    fn new() -> Result<Self, String> {
+        Ok(Self {
+            codex_jobs: Mutex::new(HashMap::new()),
+            codex_job_counter: AtomicU64::new(0),
+            runtime: Runtime::new()
+                .map_err(|error| format!("非同期ランタイムを初期化できませんでした: {error}"))?,
+        })
+    }
 }
 
 struct CodexJob {
@@ -124,7 +136,7 @@ pub fn run() -> Result<(), String> {
     let listener = TcpListener::bind(&address).map_err(|error| {
         format!("ローカルWebサーバーを起動できませんでした ({address}): {error}")
     })?;
-    let state = Arc::new(ServerState::default());
+    let state = Arc::new(ServerState::new()?);
 
     println!("YouTube AI Brief local web server");
     println!("URL: http://{address}");
@@ -230,8 +242,8 @@ fn handle_api_request(request: HttpRequest, state: Arc<ServerState>) -> HttpResp
     }
 
     let result = match request.path.strip_prefix("/api/").unwrap_or_default() {
-        "list_captions" => api_list_captions(&request.body),
-        "fetch_transcript" => api_fetch_transcript(&request.body),
+        "list_captions" => api_list_captions(&request.body, &state.runtime),
+        "fetch_transcript" => api_fetch_transcript(&request.body, &state.runtime),
         "append_debug_log" => api_append_debug_log(&request.body),
         "read_debug_log" => api_read_debug_log(),
         "open_youtube_url" => api_open_youtube_url(&request.body),
@@ -248,12 +260,13 @@ fn handle_api_request(request: HttpRequest, state: Arc<ServerState>) -> HttpResp
     }
 }
 
-fn api_list_captions(body: &[u8]) -> Result<Value, String> {
+fn api_list_captions(body: &[u8], runtime: &Runtime) -> Result<Value, String> {
     let request: UrlRequest = parse_json(body)?;
     let started_at = Instant::now();
     debug_log::append_event("web.list_captions.start", json!({ "url": &request.url }));
-    let result =
-        block_on_async(transcript::list_captions(&request.url))?.map_err(|error| error.message)?;
+    let result = runtime
+        .block_on(transcript::list_captions(&request.url))
+        .map_err(|error| error.message)?;
     debug_log::append_event(
         "web.list_captions.completed",
         json!({
@@ -266,7 +279,7 @@ fn api_list_captions(body: &[u8]) -> Result<Value, String> {
     serde_json::to_value(result).map_err(|error| error.to_string())
 }
 
-fn api_fetch_transcript(body: &[u8]) -> Result<Value, String> {
+fn api_fetch_transcript(body: &[u8], runtime: &Runtime) -> Result<Value, String> {
     let request: FetchTranscriptRequest = parse_json(body)?;
     let started_at = Instant::now();
     debug_log::append_event(
@@ -277,11 +290,12 @@ fn api_fetch_transcript(body: &[u8]) -> Result<Value, String> {
             "source": &request.source,
         }),
     );
-    let result = block_on_async(transcript::fetch_transcript(
-        &request.url,
-        Some((request.language, request.source)),
-    ))?
-    .map_err(|error| error.message)?;
+    let result = runtime
+        .block_on(transcript::fetch_transcript(
+            &request.url,
+            Some((request.language, request.source)),
+        ))
+        .map_err(|error| error.message)?;
     debug_log::append_event(
         "web.fetch_transcript.completed",
         json!({
@@ -495,12 +509,6 @@ fn handle_static_request(request: &HttpRequest, dist_dir: &Path) -> HttpResponse
 
 fn parse_json<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T, String> {
     serde_json::from_slice(body).map_err(|error| format!("JSONを解釈できませんでした: {error}"))
-}
-
-fn block_on_async<T>(future: impl std::future::Future<Output = T>) -> Result<T, String> {
-    tokio::runtime::Runtime::new()
-        .map_err(|error| format!("非同期ランタイムを初期化できませんでした: {error}"))
-        .map(|runtime| runtime.block_on(future))
 }
 
 fn json_response(status: u16, value: Value) -> HttpResponse {

@@ -996,7 +996,7 @@ textarea[hidden] {
 
 .markdown-output img {
   display: block;
-  width: min(66.666%, 640px);
+  max-width: 100%;
   height: auto;
   border: 1px solid #dce2e7;
   border-radius: 8px;
