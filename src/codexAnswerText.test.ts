@@ -22,10 +22,10 @@ describe("codex answer text", () => {
     expect(getCodexAnswerTextForCopy(answer)).toBe("本文です。\n\n続きです。");
   });
 
-  test("removes leading protocol marker hash lines", () => {
-    const answer = "#\n\n## 1. この動画の概要\n\n本文です。";
+  test("normalizes line endings and trims answer markdown", () => {
+    const answer = "\r\n# 1. この動画の概要\r\n\r\n本文です。\r\n";
 
-    expect(normalizeCodexAnswerMarkdown(answer)).toBe("## 1. この動画の概要\n\n本文です。");
+    expect(normalizeCodexAnswerMarkdown(answer)).toBe("# 1. この動画の概要\n\n本文です。");
   });
 
   test("keeps valid leading markdown headings", () => {

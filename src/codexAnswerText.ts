@@ -3,7 +3,7 @@ export function getCodexAnswerTextForCopy(markdown: string) {
 }
 
 export function normalizeCodexAnswerMarkdown(markdown: string) {
-  return markdown.replace(/\r\n?/g, "\n").replace(/^(?:[ \t]*#[ \t]*(?:\n|$))+/g, "").trim();
+  return markdown.replace(/\r\n?/g, "\n").trim();
 }
 
 function stripGeneratedImageSection(markdown: string) {

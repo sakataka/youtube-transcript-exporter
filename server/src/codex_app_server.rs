@@ -53,6 +53,7 @@ struct TurnOutput {
 
 #[derive(Debug, Eq, PartialEq)]
 struct AgentMessageText {
+    id: Option<String>,
     phase: Option<String>,
     text: String,
 }
@@ -323,7 +324,7 @@ fn run_turn(
     )?;
 
     let mut line = String::new();
-    let mut delta_answer = String::new();
+    let mut delta_messages: Vec<AgentMessageText> = Vec::new();
     let mut completed_messages: Vec<AgentMessageText> = Vec::new();
     let mut generated_images: Vec<String> = Vec::new();
 
@@ -367,8 +368,8 @@ fn run_turn(
 
         match method {
             "item/agentMessage/delta" => {
-                if let Some(delta) = extract_delta(&message) {
-                    delta_answer.push_str(delta);
+                if let Some((item_id, delta)) = extract_agent_message_delta(&message) {
+                    append_agent_message_delta(&mut delta_messages, item_id, &delta);
                 }
             }
             "item/completed" => {
@@ -399,7 +400,7 @@ fn run_turn(
         }
     }
 
-    let text = select_turn_text(&completed_messages, &delta_answer);
+    let text = select_turn_text(&completed_messages, &delta_messages);
 
     debug_log::append_event(
         "codex_app_server.turn.completed",
@@ -516,13 +517,39 @@ fn find_executable_in_path(name: &str) -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
-fn extract_delta(message: &Value) -> Option<&str> {
-    message
+fn extract_agent_message_delta(message: &Value) -> Option<(String, String)> {
+    let delta = message
         .pointer("/params/delta")
         .or_else(|| message.pointer("/params/textDelta"))
         .or_else(|| message.pointer("/params/contentDelta"))
         .or_else(|| message.pointer("/params/text"))
+        .and_then(Value::as_str)?;
+    let item_id = message
+        .pointer("/params/itemId")
         .and_then(Value::as_str)
+        .unwrap_or("__legacy_agent_message_delta__");
+
+    Some((item_id.to_string(), delta.to_string()))
+}
+
+fn append_agent_message_delta(
+    delta_messages: &mut Vec<AgentMessageText>,
+    item_id: String,
+    delta: &str,
+) {
+    if let Some(message) = delta_messages
+        .iter_mut()
+        .find(|message| message.id.as_deref() == Some(item_id.as_str()))
+    {
+        message.text.push_str(delta);
+        return;
+    }
+
+    delta_messages.push(AgentMessageText {
+        id: Some(item_id),
+        phase: None,
+        text: delta.to_string(),
+    });
 }
 
 fn extract_completed_agent_message(message: &Value) -> Option<AgentMessageText> {
@@ -544,19 +571,26 @@ fn extract_completed_agent_message(message: &Value) -> Option<AgentMessageText> 
         .pointer("/phase")
         .and_then(Value::as_str)
         .map(str::to_string);
+    let id = item
+        .pointer("/id")
+        .and_then(Value::as_str)
+        .map(str::to_string);
 
-    Some(AgentMessageText { phase, text })
+    Some(AgentMessageText { id, phase, text })
 }
 
-fn select_turn_text(completed_messages: &[AgentMessageText], delta_answer: &str) -> String {
-    let final_answer = join_agent_messages(completed_messages.iter().filter(|message| {
+fn select_turn_text(
+    completed_messages: &[AgentMessageText],
+    delta_messages: &[AgentMessageText],
+) -> String {
+    let final_answer = select_last_agent_message_text(completed_messages.iter().filter(|message| {
         message.phase.as_deref() == Some("final_answer")
     }));
     if !final_answer.is_empty() {
         return final_answer;
     }
 
-    let unknown_phase = join_agent_messages(
+    let unknown_phase = select_last_agent_message_text(
         completed_messages
             .iter()
             .filter(|message| message.phase.is_none()),
@@ -565,35 +599,26 @@ fn select_turn_text(completed_messages: &[AgentMessageText], delta_answer: &str)
         return unknown_phase;
     }
 
-    let non_commentary = join_agent_messages(completed_messages.iter().filter(|message| {
+    let non_commentary = select_last_agent_message_text(completed_messages.iter().filter(|message| {
         message.phase.as_deref() != Some("commentary")
     }));
     if !non_commentary.is_empty() {
         return non_commentary;
     }
 
-    normalize_agent_answer_text(delta_answer)
+    select_last_agent_message_text(delta_messages.iter())
 }
 
-fn join_agent_messages<'a>(messages: impl Iterator<Item = &'a AgentMessageText>) -> String {
+fn select_last_agent_message_text<'a>(messages: impl Iterator<Item = &'a AgentMessageText>) -> String {
     messages
-        .map(|message| normalize_agent_answer_text(&message.text))
+        .map(|message| normalize_agent_message_text(&message.text))
         .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n")
-        .trim()
-        .to_string()
+        .last()
+        .unwrap_or_default()
 }
 
-fn normalize_agent_answer_text(text: &str) -> String {
-    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    normalized
-        .lines()
-        .skip_while(|line| line.trim() == "#")
-        .collect::<Vec<_>>()
-        .join("\n")
-        .trim()
-        .to_string()
+fn normalize_agent_message_text(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n").trim().to_string()
 }
 
 fn extract_image_generation_markdown(message: &Value) -> Option<String> {
@@ -656,8 +681,9 @@ fn is_likely_base64_image(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_completed_agent_message, extract_delta, extract_image_generation_markdown,
-        extract_raw_image_generation_markdown, select_turn_text, AgentMessageText,
+        append_agent_message_delta, extract_agent_message_delta, extract_completed_agent_message,
+        extract_image_generation_markdown, extract_raw_image_generation_markdown, select_turn_text,
+        AgentMessageText,
     };
     use serde_json::json;
 
@@ -665,10 +691,16 @@ mod tests {
     fn extracts_agent_message_delta() {
         let message = json!({
             "method": "item/agentMessage/delta",
-            "params": { "delta": "回答" }
+            "params": {
+                "itemId": "item_1",
+                "delta": "回答"
+            }
         });
 
-        assert_eq!(extract_delta(&message), Some("回答"));
+        assert_eq!(
+            extract_agent_message_delta(&message),
+            Some(("item_1".to_string(), "回答".to_string()))
+        );
     }
 
     #[test]
@@ -686,6 +718,7 @@ mod tests {
         assert_eq!(
             extract_completed_agent_message(&message),
             Some(AgentMessageText {
+                id: None,
                 phase: None,
                 text: "完了した回答".to_string(),
             })
@@ -709,6 +742,7 @@ mod tests {
         assert_eq!(
             extract_completed_agent_message(&message),
             Some(AgentMessageText {
+                id: Some("item_1".to_string()),
                 phase: Some("final_answer".to_string()),
                 text: "# 1. この動画の概要".to_string(),
             })
@@ -719,44 +753,57 @@ mod tests {
     fn selects_final_answer_over_commentary_and_delta_text() {
         let completed_messages = vec![
             AgentMessageText {
+                id: Some("commentary_1".to_string()),
                 phase: Some("commentary".to_string()),
                 text: "#".to_string(),
             },
             AgentMessageText {
+                id: Some("final_1".to_string()),
                 phase: Some("final_answer".to_string()),
                 text: "# 1. この動画の概要\n\n本文です。".to_string(),
             },
         ];
 
         assert_eq!(
-            select_turn_text(&completed_messages, "#\n\n# 1. この動画の概要"),
+            select_turn_text(&completed_messages, &[]),
             "# 1. この動画の概要\n\n本文です。"
         );
     }
 
     #[test]
-    fn removes_leading_protocol_marker_from_final_answer_messages() {
+    fn selects_last_final_answer_item_when_multiple_final_answer_items_complete() {
         let completed_messages = vec![
             AgentMessageText {
+                id: Some("final_1".to_string()),
                 phase: Some("final_answer".to_string()),
                 text: "#".to_string(),
             },
             AgentMessageText {
+                id: Some("final_2".to_string()),
                 phase: Some("final_answer".to_string()),
                 text: "## 1. この動画の概要\n\n本文です。".to_string(),
             },
         ];
 
         assert_eq!(
-            select_turn_text(&completed_messages, "#\n\n## 1. この動画の概要"),
+            select_turn_text(&completed_messages, &[]),
             "## 1. この動画の概要\n\n本文です。"
         );
     }
 
     #[test]
-    fn removes_leading_protocol_marker_from_delta_fallback() {
+    fn selects_last_delta_item_when_completed_messages_are_missing() {
+        let mut delta_messages = Vec::new();
+        append_agent_message_delta(&mut delta_messages, "item_1".to_string(), "#");
+        append_agent_message_delta(
+            &mut delta_messages,
+            "item_2".to_string(),
+            "## 1. この動画の概要",
+        );
+        append_agent_message_delta(&mut delta_messages, "item_2".to_string(), "\n\n本文です。");
+
         assert_eq!(
-            select_turn_text(&[], "#\n\n## 1. この動画の概要\n\n本文です。"),
+            select_turn_text(&[], &delta_messages),
             "## 1. この動画の概要\n\n本文です。"
         );
     }
@@ -764,25 +811,48 @@ mod tests {
     #[test]
     fn keeps_valid_leading_markdown_heading() {
         let completed_messages = vec![AgentMessageText {
+            id: Some("final_1".to_string()),
             phase: Some("final_answer".to_string()),
             text: "# 1. この動画の概要\n\n本文です。".to_string(),
         }];
 
         assert_eq!(
-            select_turn_text(&completed_messages, ""),
+            select_turn_text(&completed_messages, &[]),
             "# 1. この動画の概要\n\n本文です。"
+        );
+    }
+
+    #[test]
+    fn selects_last_unknown_phase_item_for_phase_inconsistent_providers() {
+        let completed_messages = vec![
+            AgentMessageText {
+                id: Some("unknown_1".to_string()),
+                phase: None,
+                text: "#".to_string(),
+            },
+            AgentMessageText {
+                id: Some("unknown_2".to_string()),
+                phase: None,
+                text: "## 1. この動画の概要\n\n本文です。".to_string(),
+            },
+        ];
+
+        assert_eq!(
+            select_turn_text(&completed_messages, &[]),
+            "## 1. この動画の概要\n\n本文です。"
         );
     }
 
     #[test]
     fn falls_back_to_unknown_phase_completed_message_before_delta_text() {
         let completed_messages = vec![AgentMessageText {
+            id: Some("unknown_1".to_string()),
             phase: None,
             text: "完了済みの回答".to_string(),
         }];
 
         assert_eq!(
-            select_turn_text(&completed_messages, "途中 delta"),
+            select_turn_text(&completed_messages, &[]),
             "完了済みの回答"
         );
     }
