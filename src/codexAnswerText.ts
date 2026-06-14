@@ -1,5 +1,9 @@
 export function getCodexAnswerTextForCopy(markdown: string) {
-  return stripMarkdownImages(stripGeneratedImageSection(markdown)).trim();
+  return stripMarkdownImages(stripGeneratedImageSection(normalizeCodexAnswerMarkdown(markdown))).trim();
+}
+
+export function normalizeCodexAnswerMarkdown(markdown: string) {
+  return markdown.replace(/\r\n?/g, "\n").replace(/^(?:[ \t]*#[ \t]*(?:\n|$))+/g, "").trim();
 }
 
 function stripGeneratedImageSection(markdown: string) {

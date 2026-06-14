@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getCodexAnswerTextForCopy } from "./codexAnswerText";
+import { getCodexAnswerTextForCopy, normalizeCodexAnswerMarkdown } from "./codexAnswerText";
 
 describe("codex answer text", () => {
   test("removes generated image section for answer copy", () => {
@@ -20,6 +20,18 @@ describe("codex answer text", () => {
     const answer = "本文です。\n\n![diagram](https://example.com/image.png)\n\n続きです。";
 
     expect(getCodexAnswerTextForCopy(answer)).toBe("本文です。\n\n続きです。");
+  });
+
+  test("removes leading protocol marker hash lines", () => {
+    const answer = "#\n\n## 1. この動画の概要\n\n本文です。";
+
+    expect(normalizeCodexAnswerMarkdown(answer)).toBe("## 1. この動画の概要\n\n本文です。");
+  });
+
+  test("keeps valid leading markdown headings", () => {
+    const answer = "# 1. この動画の概要\n\n本文です。";
+
+    expect(normalizeCodexAnswerMarkdown(answer)).toBe("# 1. この動画の概要\n\n本文です。");
   });
 
 });

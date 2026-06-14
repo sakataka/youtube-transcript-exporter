@@ -572,15 +572,26 @@ fn select_turn_text(completed_messages: &[AgentMessageText], delta_answer: &str)
         return non_commentary;
     }
 
-    delta_answer.trim().to_string()
+    normalize_agent_answer_text(delta_answer)
 }
 
 fn join_agent_messages<'a>(messages: impl Iterator<Item = &'a AgentMessageText>) -> String {
     messages
-        .map(|message| message.text.trim())
+        .map(|message| normalize_agent_answer_text(&message.text))
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join("\n\n")
+        .trim()
+        .to_string()
+}
+
+fn normalize_agent_answer_text(text: &str) -> String {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    normalized
+        .lines()
+        .skip_while(|line| line.trim() == "#")
+        .collect::<Vec<_>>()
+        .join("\n")
         .trim()
         .to_string()
 }
@@ -719,6 +730,46 @@ mod tests {
 
         assert_eq!(
             select_turn_text(&completed_messages, "#\n\n# 1. この動画の概要"),
+            "# 1. この動画の概要\n\n本文です。"
+        );
+    }
+
+    #[test]
+    fn removes_leading_protocol_marker_from_final_answer_messages() {
+        let completed_messages = vec![
+            AgentMessageText {
+                phase: Some("final_answer".to_string()),
+                text: "#".to_string(),
+            },
+            AgentMessageText {
+                phase: Some("final_answer".to_string()),
+                text: "## 1. この動画の概要\n\n本文です。".to_string(),
+            },
+        ];
+
+        assert_eq!(
+            select_turn_text(&completed_messages, "#\n\n## 1. この動画の概要"),
+            "## 1. この動画の概要\n\n本文です。"
+        );
+    }
+
+    #[test]
+    fn removes_leading_protocol_marker_from_delta_fallback() {
+        assert_eq!(
+            select_turn_text(&[], "#\n\n## 1. この動画の概要\n\n本文です。"),
+            "## 1. この動画の概要\n\n本文です。"
+        );
+    }
+
+    #[test]
+    fn keeps_valid_leading_markdown_heading() {
+        let completed_messages = vec![AgentMessageText {
+            phase: Some("final_answer".to_string()),
+            text: "# 1. この動画の概要\n\n本文です。".to_string(),
+        }];
+
+        assert_eq!(
+            select_turn_text(&completed_messages, ""),
             "# 1. この動画の概要\n\n本文です。"
         );
     }

@@ -1,6 +1,6 @@
 import "./style.css";
 import { invokeBackend } from "./backendClient";
-import { getCodexAnswerTextForCopy } from "./codexAnswerText";
+import { getCodexAnswerTextForCopy, normalizeCodexAnswerMarkdown } from "./codexAnswerText";
 import { escapeHtml, renderMarkdown as renderMarkdownOutput } from "./markdownRenderer";
 import {
   buildAnalysisPrompt as buildAnalysisPromptText,
@@ -1942,12 +1942,12 @@ function handleCodexJobStatus(status: CodexJobStatus, token: number) {
   setCodexLoading(false);
 
   if (status.status === "completed" && status.answer) {
-    latestCodexAnswer = status.answer;
+    latestCodexAnswer = normalizeCodexAnswerMarkdown(status.answer);
     latestCodexQuestionKind = completedRequest.questionKind;
     latestCodexQuestionText = completedRequest.questionText;
     latestCodexSelectedExcerpt = completedRequest.selectedExcerpt;
     latestCodexAnswerContext = completedRequest.answerContext;
-    saveCodexHistoryEntry(completedRequest, status.answer);
+    saveCodexHistoryEntry(completedRequest, latestCodexAnswer);
     renderOutput();
     playCompletionSound();
     return;
@@ -2231,7 +2231,7 @@ function restoreCodexHistoryEntry(historyId: string | undefined) {
     return;
   }
 
-  latestCodexAnswer = entry.answerMarkdown;
+  latestCodexAnswer = normalizeCodexAnswerMarkdown(entry.answerMarkdown);
   latestCodexQuestionKind = "history";
   latestCodexQuestionText = `${t("historyRestoredPrefix")}: ${entry.questionText}`;
   latestCodexSelectedExcerpt = entry.selectedExcerpt;
@@ -2320,7 +2320,10 @@ function normalizeCodexHistoryEntry(value: unknown): CodexHistoryEntry | null {
     return null;
   }
 
-  return candidate as CodexHistoryEntry;
+  return {
+    ...(candidate as CodexHistoryEntry),
+    answerMarkdown: normalizeCodexAnswerMarkdown(candidate.answerMarkdown)
+  };
 }
 
 function getTranscriptTextForDisplay(transcript: TranscriptSuccess) {
