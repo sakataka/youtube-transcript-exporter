@@ -14,6 +14,7 @@ use url::Url;
 
 const YTDLP_TIMEOUT: Duration = Duration::from_secs(45);
 const CAPTION_FETCH_TIMEOUT: Duration = Duration::from_secs(25);
+const KANARY_TIMEOUT: Duration = Duration::from_secs(60 * 30);
 static TEMP_OUTPUT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -21,6 +22,7 @@ static TEMP_OUTPUT_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub enum CaptionSource {
     Manual,
     Automatic,
+    Kanary,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -84,6 +86,7 @@ pub struct TranscriptResult {
     pub description: Option<String>,
     pub thumbnail_url: Option<String>,
     pub webpage_url: Option<String>,
+    pub source_path: Option<String>,
     pub view_count: Option<u64>,
     pub published_date: Option<String>,
     pub duration: Option<String>,
@@ -128,6 +131,7 @@ pub struct CaptionListResult {
     pub description: Option<String>,
     pub thumbnail_url: Option<String>,
     pub webpage_url: Option<String>,
+    pub source_path: Option<String>,
     pub view_count: Option<u64>,
     pub published_date: Option<String>,
     pub duration: Option<String>,
@@ -172,6 +176,7 @@ pub async fn list_captions(url: &str) -> Result<CaptionListResult, TranscriptErr
         description: metadata.description,
         thumbnail_url: metadata.thumbnail_url,
         webpage_url: metadata.webpage_url,
+        source_path: None,
         view_count: metadata.view_count,
         published_date: metadata.published_date,
         duration: metadata.duration,
@@ -251,6 +256,7 @@ pub async fn fetch_transcript(
             description: metadata.description,
             thumbnail_url: metadata.thumbnail_url,
             webpage_url: metadata.webpage_url,
+            source_path: None,
             view_count: metadata.view_count,
             published_date: metadata.published_date,
             duration: metadata.duration,
@@ -266,6 +272,70 @@ pub async fn fetch_transcript(
         "字幕データを取得できませんでした。",
         502,
     ))
+}
+
+pub async fn transcribe_media(path: &str) -> Result<TranscriptResult, TranscriptError> {
+    let media_path = normalize_media_path(path)?;
+    let kanary = find_kanary_path().ok_or_else(|| {
+        TranscriptError::new(
+            "kanaryが見つかりません。Kanary 2.3.6以降をインストールしてから、アプリを再起動してください。",
+            502,
+        )
+    })?;
+    let output = run_kanary_with_timeout(
+        Command::new(kanary)
+            .arg("transcribe")
+            .arg(media_path.as_os_str()),
+        KANARY_TIMEOUT,
+    )?;
+
+    if !output.status.success() {
+        return Err(TranscriptError::new(
+            classify_kanary_error(&String::from_utf8_lossy(&output.stderr)),
+            502,
+        ));
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if text.is_empty() {
+        return Err(TranscriptError::new(
+            "Kanaryの文字起こし結果が空でした。",
+            502,
+        ));
+    }
+
+    Ok(build_media_transcript_result(&media_path, text))
+}
+
+fn build_media_transcript_result(media_path: &Path, text: String) -> TranscriptResult {
+    let title = media_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("local media")
+        .to_string();
+    let video_id = media_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("local-media")
+        .to_string();
+
+    TranscriptResult {
+        video_id,
+        title,
+        channel_name: None,
+        description: None,
+        thumbnail_url: None,
+        webpage_url: None,
+        source_path: Some(media_path.display().to_string()),
+        view_count: None,
+        published_date: None,
+        duration: None,
+        chapters: Vec::new(),
+        language: "auto".to_string(),
+        source: CaptionSource::Kanary,
+        text,
+        timed_segments: Vec::new(),
+    }
 }
 
 fn build_video_metadata(info: &YtDlpInfo, fallback_video_id: String) -> VideoMetadata {
@@ -489,6 +559,7 @@ fn get_requested_tracks(
     let captions = match &source {
         CaptionSource::Manual => info.subtitles.as_ref(),
         CaptionSource::Automatic => info.automatic_captions.as_ref(),
+        CaptionSource::Kanary => None,
     };
     collect_track_for_language(captions, source, language)
         .into_iter()
@@ -806,13 +877,17 @@ fn run_ytdlp_with_timeout(
 }
 
 fn temp_output_base() -> PathBuf {
+    temp_output_base_with_label("ytdlp")
+}
+
+fn temp_output_base_with_label(label: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
     let counter = TEMP_OUTPUT_COUNTER.fetch_add(1, Ordering::Relaxed);
     env::temp_dir().join(format!(
-        "youtube-ai-brief-ytdlp-{}-{unique}-{counter}",
+        "youtube-ai-brief-{label}-{}-{unique}-{counter}",
         std::process::id()
     ))
 }
@@ -1046,6 +1121,115 @@ fn classify_ytdlp_error(stderr: &str) -> &'static str {
     "字幕情報の取得に失敗しました。"
 }
 
+fn normalize_media_path(value: &str) -> Result<PathBuf, TranscriptError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(TranscriptError::bad_request(
+            "動画ファイルのパスを入力してください。",
+        ));
+    }
+
+    let expanded = if let Some(rest) = trimmed.strip_prefix("~/") {
+        home_dir()
+            .map(|home| home.join(rest))
+            .unwrap_or_else(|| PathBuf::from(trimmed))
+    } else {
+        PathBuf::from(trimmed)
+    };
+
+    let canonical = fs::canonicalize(&expanded).map_err(|_| {
+        TranscriptError::bad_request("指定された動画ファイルが見つかりません。")
+    })?;
+
+    if !canonical.is_file() {
+        return Err(TranscriptError::bad_request(
+            "指定されたパスはファイルではありません。",
+        ));
+    }
+
+    if !is_supported_media_file(&canonical) {
+        return Err(TranscriptError::bad_request(
+            ".mov / .mp4 / .m4v の動画ファイルを指定してください。",
+        ));
+    }
+
+    Ok(canonical)
+}
+
+fn is_supported_media_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| matches!(extension.to_ascii_lowercase().as_str(), "mov" | "mp4" | "m4v"))
+        .unwrap_or(false)
+}
+
+fn classify_kanary_error(stderr: &str) -> &'static str {
+    let lower = stderr.to_ascii_lowercase();
+
+    if lower.contains("unsupported") || lower.contains("invalid") {
+        return "Kanaryがこの動画ファイルを処理できませんでした。";
+    }
+
+    if lower.contains("permission denied") || lower.contains("operation not permitted") {
+        return "動画ファイルを読み取る権限がありません。";
+    }
+
+    "Kanaryで文字起こしできませんでした。"
+}
+
+fn run_kanary_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+) -> Result<CommandOutput, TranscriptError> {
+    let output_base = temp_output_base_with_label("kanary");
+    let stdout_path = output_base.with_extension("stdout");
+    let stderr_path = output_base.with_extension("stderr");
+    let stdout_file = fs::File::create(&stdout_path)
+        .map_err(|_| TranscriptError::new("Kanaryの一時出力を作成できませんでした。", 502))?;
+    let stderr_file = fs::File::create(&stderr_path)
+        .map_err(|_| TranscriptError::new("Kanaryの一時出力を作成できませんでした。", 502))?;
+
+    let mut child = command
+        .stdout(Stdio::from(stdout_file))
+        .stderr(Stdio::from(stderr_file))
+        .spawn()
+        .map_err(|_| TranscriptError::new("Kanaryを実行できませんでした。", 502))?;
+    let started_at = std::time::Instant::now();
+
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started_at.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                cleanup_temp_output(&stdout_path, &stderr_path);
+                return Err(TranscriptError::new(
+                    "Kanaryの文字起こしがタイムアウトしました。",
+                    504,
+                ));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(100)),
+            Err(_) => {
+                cleanup_temp_output(&stdout_path, &stderr_path);
+                return Err(TranscriptError::new(
+                    "Kanaryの終了状態を確認できませんでした。",
+                    502,
+                ));
+            }
+        }
+    };
+
+    let stdout = fs::read(&stdout_path).unwrap_or_default();
+    let stderr = fs::read(&stderr_path).unwrap_or_default();
+    cleanup_temp_output(&stdout_path, &stderr_path);
+
+    Ok(CommandOutput {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
 fn find_ytdlp_path() -> Option<PathBuf> {
     find_ytdlp_path_with(
         env::var_os("PATH"),
@@ -1057,13 +1241,32 @@ fn find_ytdlp_path() -> Option<PathBuf> {
     )
 }
 
+fn find_kanary_path() -> Option<PathBuf> {
+    find_executable_path(
+        "kanary",
+        env::var_os("PATH"),
+        [
+            PathBuf::from("/opt/homebrew/bin/kanary"),
+            PathBuf::from("/usr/local/bin/kanary"),
+        ],
+    )
+}
+
 fn find_ytdlp_path_with(
+    path_env: Option<OsString>,
+    candidates: impl IntoIterator<Item = PathBuf>,
+) -> Option<PathBuf> {
+    find_executable_path("yt-dlp", path_env, candidates)
+}
+
+fn find_executable_path(
+    executable_name: &str,
     path_env: Option<OsString>,
     candidates: impl IntoIterator<Item = PathBuf>,
 ) -> Option<PathBuf> {
     if let Some(path_env) = path_env {
         for dir in env::split_paths(&path_env) {
-            let candidate = dir.join("yt-dlp");
+            let candidate = dir.join(executable_name);
             if is_executable_file(&candidate) {
                 return Some(candidate);
             }
@@ -1073,6 +1276,10 @@ fn find_ytdlp_path_with(
     candidates
         .into_iter()
         .find(|candidate| is_executable_file(candidate))
+}
+
+fn home_dir() -> Option<PathBuf> {
+    env::var_os("HOME").map(PathBuf::from)
 }
 
 fn is_executable_file(path: &Path) -> bool {
@@ -1401,6 +1608,64 @@ Hello everyone
 
         assert_eq!(tracks.len(), 1);
         assert_eq!(tracks[0].url, "https://example.com/ja.vtt");
+    }
+
+    #[test]
+    fn validates_supported_local_video_paths() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = env::temp_dir().join(format!("kanary-media-test-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let candidate = dir.join("sample.MP4");
+        File::create(&candidate).unwrap();
+
+        let normalized = normalize_media_path(candidate.to_str().unwrap()).unwrap();
+
+        fs::remove_file(&candidate).unwrap();
+        fs::remove_dir(&dir).unwrap();
+
+        assert_eq!(normalized.file_name().and_then(|name| name.to_str()), Some("sample.MP4"));
+    }
+
+    #[test]
+    fn rejects_unsupported_local_media_extensions() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = env::temp_dir().join(format!("kanary-media-extension-test-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let candidate = dir.join("sample.txt");
+        File::create(&candidate).unwrap();
+
+        let error = normalize_media_path(candidate.to_str().unwrap()).unwrap_err();
+
+        fs::remove_file(&candidate).unwrap();
+        fs::remove_dir(&dir).unwrap();
+
+        assert_eq!(error.status, 400);
+        assert!(error.message.contains(".mov / .mp4 / .m4v"));
+    }
+
+    #[test]
+    fn builds_kanary_transcript_result_from_media_path() {
+        let result = build_media_transcript_result(
+            Path::new("/Users/example/Movies/demo.mp4"),
+            "hello from video".to_string(),
+        );
+
+        assert_eq!(result.video_id, "demo");
+        assert_eq!(result.title, "demo.mp4");
+        assert_eq!(result.source, CaptionSource::Kanary);
+        assert_eq!(result.language, "auto");
+        assert_eq!(result.text, "hello from video");
+        assert_eq!(
+            result.source_path.as_deref(),
+            Some("/Users/example/Movies/demo.mp4")
+        );
+        assert!(result.timed_segments.is_empty());
     }
 
     #[test]

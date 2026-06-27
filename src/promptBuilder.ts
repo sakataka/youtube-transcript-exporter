@@ -16,14 +16,17 @@ export function buildAnalysisPrompt(
   template: PromptTemplate,
   options: BuildAnalysisPromptOptions
 ) {
+  const isLocalMedia = Boolean(transcript.sourcePath);
   const metadata = [
     `動画タイトル: ${transcript.title || transcript.videoId}`,
     transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
     transcript.publishedDate ? `公開日: ${transcript.publishedDate}` : null,
     `確認基準日: ${options.promptCreatedDate}`,
     transcript.duration ? `動画時間: ${transcript.duration}` : null,
-    `YouTube URL: ${transcript.webpageUrl || options.fallbackUrl}`,
-    `動画ID: ${transcript.videoId}`,
+    isLocalMedia
+      ? `ローカル動画ファイル: ${transcript.sourcePath}`
+      : `YouTube URL: ${transcript.webpageUrl || options.fallbackUrl}`,
+    isLocalMedia ? null : `動画ID: ${transcript.videoId}`,
     typeof transcript.viewCount === "number" ? `再生数: ${transcript.viewCount.toLocaleString("ja-JP")}` : null,
     transcript.thumbnailUrl ? `サムネイルURL: ${transcript.thumbnailUrl}` : null,
     `字幕: ${options.captionLabel}`,
@@ -35,12 +38,17 @@ export function buildAnalysisPrompt(
           "",
           "注意: この字幕はYouTubeの自動字幕なので、誤認識が含まれる可能性があります。文脈から補正しながら解説してください。"
         ]
+      : transcript.source === "kanary"
+        ? [
+            "",
+            "注意: この文字起こしはKanaryによる音声認識結果なので、誤認識が含まれる可能性があります。文脈から補正しながら解説してください。"
+          ]
       : [];
 
   return [
     options.includeImageInstruction
-      ? "以下のYouTube動画字幕をもとに、必ず次の2つを順番に行ってください。"
-      : "以下のYouTube動画字幕をもとに、文章で動画の内容を説明・整理してください。",
+      ? `以下の${isLocalMedia ? "動画文字起こし" : "YouTube動画字幕"}をもとに、必ず次の2つを順番に行ってください。`
+      : `以下の${isLocalMedia ? "動画文字起こし" : "YouTube動画字幕"}をもとに、文章で動画の内容を説明・整理してください。`,
     options.includeImageInstruction ? "1. まず、文章で動画の内容を説明・整理してください。" : null,
     options.includeImageInstruction ? "2. その後、説明とは別に、動画内容を1枚にまとめた画像を生成してください。" : null,
     "",
@@ -70,7 +78,7 @@ export function buildAnalysisPrompt(
     buildChapterSection(transcript),
     ...caution,
     "",
-    "字幕:",
+    isLocalMedia ? "文字起こし:" : "字幕:",
     options.transcriptText,
     "",
     options.transcriptDisplayMode === "timestamped" ? null : buildTimedReference(transcript, options.buildTimestampUrl),
@@ -100,8 +108,10 @@ export function buildFollowUpPrompt(options: BuildFollowUpPromptOptions) {
         transcript.channelName ? `チャンネル名: ${transcript.channelName}` : null,
         transcript.publishedDate ? `公開日: ${transcript.publishedDate}` : null,
         transcript.duration ? `動画時間: ${transcript.duration}` : null,
-        `YouTube URL: ${transcript.webpageUrl || fallbackUrl}`,
-        `動画ID: ${transcript.videoId}`,
+        transcript.sourcePath
+          ? `ローカル動画ファイル: ${transcript.sourcePath}`
+          : `YouTube URL: ${transcript.webpageUrl || fallbackUrl}`,
+        transcript.sourcePath ? null : `動画ID: ${transcript.videoId}`,
         `字幕: ${transcript.language} (${formatCaptionSource(transcript.source)})`
       ].filter(Boolean)
     : context

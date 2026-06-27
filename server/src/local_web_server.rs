@@ -68,6 +68,12 @@ struct FetchTranscriptRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct TranscribeMediaRequest {
+    path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct StartCodexRequest {
     prompt: String,
     generate_image: bool,
@@ -244,6 +250,7 @@ fn handle_api_request(request: HttpRequest, state: Arc<ServerState>) -> HttpResp
     let result = match request.path.strip_prefix("/api/").unwrap_or_default() {
         "list_captions" => api_list_captions(&request.body, &state.runtime),
         "fetch_transcript" => api_fetch_transcript(&request.body, &state.runtime),
+        "transcribe_media" => api_transcribe_media(&request.body, &state.runtime),
         "append_debug_log" => api_append_debug_log(&request.body),
         "read_debug_log" => api_read_debug_log(),
         "open_youtube_url" => api_open_youtube_url(&request.body),
@@ -305,6 +312,28 @@ fn api_fetch_transcript(body: &[u8], runtime: &Runtime) -> Result<Value, String>
             "source": &result.source,
             "textChars": result.text.chars().count(),
             "timedSegments": result.timed_segments.len(),
+        }),
+    );
+    serde_json::to_value(result).map_err(|error| error.to_string())
+}
+
+fn api_transcribe_media(body: &[u8], runtime: &Runtime) -> Result<Value, String> {
+    let request: TranscribeMediaRequest = parse_json(body)?;
+    let started_at = Instant::now();
+    debug_log::append_event(
+        "web.transcribe_media.start",
+        json!({ "path": &request.path }),
+    );
+    let result = runtime
+        .block_on(transcript::transcribe_media(&request.path))
+        .map_err(|error| error.message)?;
+    debug_log::append_event(
+        "web.transcribe_media.completed",
+        json!({
+            "elapsedMs": started_at.elapsed().as_millis(),
+            "videoId": &result.video_id,
+            "title": &result.title,
+            "textChars": result.text.chars().count(),
         }),
     );
     serde_json::to_value(result).map_err(|error| error.to_string())

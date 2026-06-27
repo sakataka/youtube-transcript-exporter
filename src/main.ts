@@ -263,6 +263,10 @@ const uiText = {
     eyebrow: "YouTube to AI prompt tool",
     heading: "YouTube動画をAI向けに整理",
     urlLabel: "YouTube URL",
+    mediaPathLabel: "ローカル動画ファイル",
+    mediaPathPlaceholder: "/Users/you/Movies/video.mp4",
+    transcribeMedia: "動画を文字起こし",
+    transcribeMediaLoading: "文字起こし中",
     hint: "自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。",
     videoId: "動画ID",
     selectedLanguage: "選択言語",
@@ -358,6 +362,10 @@ const uiText = {
     japanese: "日本語",
     english: "English",
     urlRequired: "YouTube URLを入力してください。",
+    mediaPathRequired: "ローカル動画ファイルのパスを入力してください。",
+    transcribingMedia: "Kanaryで動画を文字起こししています。",
+    transcribeMediaFailed: "動画の文字起こしに失敗しました。",
+    mediaTranscriptReady: "動画の文字起こしを取得しました。",
     chooseCaption: "取得する字幕を選んでください。",
     noCaptions: "字幕が見つかりません。",
     listCaptionsFailed: "字幕候補の取得に失敗しました。",
@@ -388,12 +396,17 @@ const uiText = {
     defaultMark: " / デフォルト",
     manualCaption: "字幕",
     automaticCaption: "自動字幕",
+    kanaryTranscript: "Kanary文字起こし",
     captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`
   },
   en: {
     eyebrow: "YouTube to AI prompt tool",
     heading: "Prepare YouTube Videos for AI",
     urlLabel: "YouTube URL",
+    mediaPathLabel: "Local video file",
+    mediaPathPlaceholder: "/Users/you/Movies/video.mp4",
+    transcribeMedia: "Transcribe video",
+    transcribeMediaLoading: "Transcribing",
     hint: "Shows only captions and auto captions attached to the video, excluding auto-translated captions.",
     videoId: "Video ID",
     selectedLanguage: "Selected language",
@@ -489,6 +502,10 @@ const uiText = {
     japanese: "Japanese",
     english: "English",
     urlRequired: "Enter a YouTube URL.",
+    mediaPathRequired: "Enter a local video file path.",
+    transcribingMedia: "Transcribing the video with Kanary.",
+    transcribeMediaFailed: "Failed to transcribe the video.",
+    mediaTranscriptReady: "Fetched the video transcription.",
     chooseCaption: "Choose the caption to fetch.",
     noCaptions: "No captions found.",
     listCaptionsFailed: "Failed to fetch caption candidates.",
@@ -519,6 +536,7 @@ const uiText = {
     defaultMark: " / Default",
     manualCaption: "Caption",
     automaticCaption: "Auto caption",
+    kanaryTranscript: "Kanary transcription",
     captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`
   }
 };
@@ -564,6 +582,18 @@ app.innerHTML = `
             </svg>
             <span data-i18n="transcriptSearchToggle">検索</span>
           </button>
+        </div>
+        <div class="media-command-row">
+          <label class="sr-only" for="local-media-path" data-i18n="mediaPathLabel">ローカル動画ファイル</label>
+          <input
+            id="local-media-path"
+            name="media-path"
+            type="text"
+            data-i18n-placeholder="mediaPathPlaceholder"
+            placeholder="/Users/you/Movies/video.mp4"
+            autocomplete="off"
+          />
+          <button class="secondary-button compact-button" id="transcribe-media-button" type="button" data-i18n="transcribeMedia">動画を文字起こし</button>
         </div>
         <p class="status-message" id="message" hidden></p>
       </form>
@@ -818,7 +848,9 @@ app.innerHTML = `
 
 const form = document.querySelector<HTMLFormElement>("#caption-form")!;
 const urlInput = document.querySelector<HTMLInputElement>("#youtube-url")!;
+const mediaPathInput = document.querySelector<HTMLInputElement>("#local-media-path")!;
 const askCodexButton = document.querySelector<HTMLButtonElement>("#ask-codex-button")!;
+const transcribeMediaButton = document.querySelector<HTMLButtonElement>("#transcribe-media-button")!;
 const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
 const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
 const reloadAppButton = document.querySelector<HTMLButtonElement>("#reload-app-button")!;
@@ -910,6 +942,7 @@ let transcriptRequestToken = 0;
 let codexRequestToken = 0;
 let captionAutoCheckTimer: number | undefined;
 let lastCaptionCheckUrl = "";
+let mediaTranscriptRequestToken = 0;
 let isStartingCodexRequest = false;
 let codexPollTimer: number | undefined;
 let codexHistory = loadCodexHistory();
@@ -955,6 +988,19 @@ form.addEventListener("submit", async (event) => {
   }
 
   await checkCaptionCandidates(url);
+});
+
+transcribeMediaButton.addEventListener("click", async () => {
+  await transcribeLocalMedia();
+});
+
+mediaPathInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+
+  event.preventDefault();
+  void transcribeLocalMedia();
 });
 
 urlInput.addEventListener("input", scheduleCaptionAutoCheck);
@@ -1393,7 +1439,7 @@ function renderCaptionOptions(captions: CaptionOption[]) {
           />
           <span class="caption-option-body">
             <strong>${escapeHtml(caption.name || caption.language)}</strong>
-            <span>${escapeHtml(caption.language)} / ${caption.source === "manual" ? t("manualCaption") : t("automaticCaption")}</span>
+            <span>${escapeHtml(caption.language)} / ${escapeHtml(formatCaptionSource(caption.source))}</span>
           </span>
         </label>
       `
@@ -1413,12 +1459,74 @@ function setTranscriptLoading(isLoading: boolean) {
   askCodexButton.classList.toggle("is-loading", isLoading);
 }
 
+function setMediaTranscriptionLoading(isLoading: boolean) {
+  transcribeMediaButton.disabled = isLoading;
+  transcribeMediaButton.textContent = isLoading ? t("transcribeMediaLoading") : t("transcribeMedia");
+  transcribeMediaButton.classList.toggle("is-loading", isLoading);
+  mediaPathInput.toggleAttribute("aria-busy", isLoading);
+}
+
 function setCodexLoading(isLoading: boolean) {
   askCodexButton.disabled = isLoading || (!latestTranscript && !selectedCaption);
   askCodexButton.textContent = isLoading ? t("askCodexLoading") : t("askCodex");
   askCodexButton.classList.toggle("is-loading", isLoading);
   cancelCodexAnswerButton.hidden = !isLoading;
   renderCodexControls();
+}
+
+async function transcribeLocalMedia() {
+  const path = mediaPathInput.value.trim();
+
+  if (!path) {
+    showError(t("mediaPathRequired"));
+    return null;
+  }
+
+  const requestToken = (mediaTranscriptRequestToken += 1);
+  captionRequestToken += 1;
+  transcriptRequestToken += 1;
+  clearResult();
+  setMediaTranscriptionLoading(true);
+  askCodexButton.disabled = true;
+  showMessage(t("transcribingMedia"));
+  appendDebugLog("frontend.transcribe_media.request", {
+    path
+  });
+
+  try {
+    const payload = await invokeBackend<TranscriptSuccess>("transcribe_media", { path });
+
+    if (requestToken !== mediaTranscriptRequestToken) {
+      return null;
+    }
+
+    const caption: CaptionOption = {
+      language: payload.language,
+      name: t("kanaryTranscript"),
+      source: payload.source,
+      isAutoCaption: false
+    };
+    selectedCaption = caption;
+    applyTranscriptPayload(payload, caption);
+    appendDebugLog("frontend.transcribe_media.applied", {
+      textChars: payload.text.length,
+      sourcePath: payload.sourcePath
+    });
+    showMessage(t("mediaTranscriptReady"));
+    return payload;
+  } catch (error) {
+    if (requestToken !== mediaTranscriptRequestToken) {
+      return null;
+    }
+
+    showError(formatInvokeError(error, t("transcribeMediaFailed")));
+    return null;
+  } finally {
+    if (requestToken === mediaTranscriptRequestToken) {
+      setMediaTranscriptionLoading(false);
+      askCodexButton.disabled = !latestTranscript;
+    }
+  }
 }
 
 async function fetchSelectedTranscript(options: { copyAfterFetch: boolean }) {
@@ -1723,7 +1831,15 @@ function formatCaptionLabel(caption: CaptionOption) {
 }
 
 function formatCaptionSource(source: CaptionSource) {
-  return source === "manual" ? t("manualCaption") : t("automaticCaption");
+  if (source === "manual") {
+    return t("manualCaption");
+  }
+
+  if (source === "kanary") {
+    return t("kanaryTranscript");
+  }
+
+  return t("automaticCaption");
 }
 
 async function copyTranscriptToClipboard(transcript: TranscriptSuccess, template: PromptTemplate) {
@@ -2256,7 +2372,7 @@ function getTranscriptAnswerContext(transcript: TranscriptSuccess): CodexAnswerC
   return {
     videoId: transcript.videoId,
     title: transcript.title || transcript.videoId,
-    url: transcript.webpageUrl || urlInput.value.trim(),
+    url: transcript.webpageUrl || transcript.sourcePath || urlInput.value.trim(),
     language: transcript.language,
     source: transcript.source
   };
@@ -2310,7 +2426,7 @@ function normalizeCodexHistoryEntry(value: unknown): CodexHistoryEntry | null {
     typeof candidate.title !== "string" ||
     typeof candidate.url !== "string" ||
     typeof candidate.language !== "string" ||
-    (candidate.source !== "manual" && candidate.source !== "automatic") ||
+    (candidate.source !== "manual" && candidate.source !== "automatic" && candidate.source !== "kanary") ||
     typeof candidate.templateId !== "string" ||
     typeof candidate.questionKind !== "string" ||
     typeof candidate.questionText !== "string" ||
@@ -2503,7 +2619,7 @@ function buildTimestampUrl(startSeconds: number) {
 }
 
 function getTimestampBaseUrl() {
-  return latestTranscript?.webpageUrl || latestCaptionList?.webpageUrl || urlInput.value.trim();
+  return latestTranscript?.webpageUrl || latestCaptionList?.webpageUrl || "";
 }
 
 function renderPromptTemplates(selectedTemplateId = promptSettings.defaultTemplateId) {
