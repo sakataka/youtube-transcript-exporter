@@ -296,7 +296,7 @@ pub async fn transcribe_media(path: &str) -> Result<TranscriptResult, Transcript
         ));
     }
 
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let text = parse_kanary_transcribe_text(&output.stdout);
     if text.is_empty() {
         return Err(TranscriptError::new(
             "Kanaryの文字起こし結果が空でした。",
@@ -1177,6 +1177,58 @@ fn classify_kanary_error(stderr: &str) -> &'static str {
     "Kanaryで文字起こしできませんでした。"
 }
 
+fn parse_kanary_transcribe_text(stdout: &[u8]) -> String {
+    let raw = String::from_utf8_lossy(stdout).trim().to_string();
+    if raw.is_empty() {
+        return String::new();
+    }
+
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return raw;
+    };
+
+    extract_kanary_text_from_value(&value).unwrap_or_default()
+}
+
+fn extract_kanary_text_from_value(value: &serde_json::Value) -> Option<String> {
+    if let Some(text) = value.get("text").and_then(|text| text.as_str()) {
+        return normalize_optional_text(Some(text.to_string()));
+    }
+
+    if let Some(text) = value
+        .get("transcript")
+        .and_then(|transcript| transcript.get("text"))
+        .and_then(|text| text.as_str())
+    {
+        return normalize_optional_text(Some(text.to_string()));
+    }
+
+    if let Some(segments) = value
+        .get("transcript")
+        .and_then(|transcript| transcript.get("segments"))
+        .and_then(|segments| segments.as_array())
+    {
+        let text = segments
+            .iter()
+            .filter_map(|segment| segment.get("text").and_then(|text| text.as_str()))
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        return normalize_optional_text(Some(text));
+    }
+
+    match value {
+        serde_json::Value::Object(object) => object
+            .values()
+            .find_map(extract_kanary_text_from_value),
+        serde_json::Value::Array(items) => items
+            .iter()
+            .find_map(extract_kanary_text_from_value),
+        _ => None,
+    }
+}
+
 fn run_kanary_with_timeout(
     command: &mut Command,
     timeout: Duration,
@@ -1248,6 +1300,10 @@ fn find_kanary_path() -> Option<PathBuf> {
         [
             PathBuf::from("/opt/homebrew/bin/kanary"),
             PathBuf::from("/usr/local/bin/kanary"),
+            PathBuf::from("/Applications/Kanary.app/Contents/Helpers/kanary"),
+            home_dir()
+                .unwrap_or_else(|| PathBuf::from("/"))
+                .join("Applications/Kanary.app/Contents/Helpers/kanary"),
         ],
     )
 }
@@ -1666,6 +1722,45 @@ Hello everyone
             Some("/Users/example/Movies/demo.mp4")
         );
         assert!(result.timed_segments.is_empty());
+    }
+
+    #[test]
+    fn parses_kanary_transcribe_segments_json() {
+        let text = parse_kanary_transcribe_text(
+            br#"{
+                "schema_version": 1,
+                "transcript": {
+                    "segments": [
+                        { "channel": "speaker", "text": "First line" },
+                        { "channel": "speaker", "text": "Second line" }
+                    ]
+                }
+            }"#,
+        );
+
+        assert_eq!(text, "First line\nSecond line");
+    }
+
+    #[test]
+    fn parses_nested_kanary_transcript_json() {
+        let text = parse_kanary_transcribe_text(
+            br#"{
+                "recording": {
+                    "transcript": {
+                        "text": "Nested transcript"
+                    }
+                }
+            }"#,
+        );
+
+        assert_eq!(text, "Nested transcript");
+    }
+
+    #[test]
+    fn keeps_plain_kanary_output_as_fallback() {
+        let text = parse_kanary_transcribe_text(b"Plain transcript\n");
+
+        assert_eq!(text, "Plain transcript");
     }
 
     #[test]
