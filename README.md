@@ -25,7 +25,7 @@
 ## 必要なもの
 
 - Bun
-- Rust
+- Rust 1.96.1以降（Rust 2024 edition）
 - yt-dlp
 - Kanary 2.3.6以降（ローカル動画ファイルを文字起こしする場合）
 - Codex CLI（Webアプリ内でAI回答を生成する場合）
