@@ -36,7 +36,7 @@ macOSで `yt-dlp` がない場合:
 brew install yt-dlp
 ```
 
-Codex連携を使う場合は、事前にCodex CLIへログインしておきます。ローカルWebサーバーは `codex app-server` を別途常駐させず、`Codexに質問` ボタンを押したときに標準入出力の子プロセスとして起動します。
+Codex連携を使う場合は、事前にCodex CLIへログインしておきます。ローカルWebサーバーは `codex app-server` を別途常駐させず、`Codexに質問` ボタンを押したときに標準入出力の子プロセスとして起動します。AI回答には `gpt-5.6-sol` を推論強度 `high` で使用します。
 
 ## 開発起動
 

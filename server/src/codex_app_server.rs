@@ -13,6 +13,9 @@ use std::{
     time::Instant,
 };
 
+const CODEX_MODEL: &str = "gpt-5.6-sol";
+const CODEX_REASONING_EFFORT: &str = "high";
+
 #[derive(Debug)]
 pub struct CodexAppServerError {
     pub message: String,
@@ -80,6 +83,8 @@ pub fn ask_with_control(
             "generateImage": generate_image,
             "prompt": debug_log::prompt_details(prompt),
             "codexPath": codex.to_string_lossy(),
+            "model": CODEX_MODEL,
+            "reasoningEffort": CODEX_REASONING_EFFORT,
         }),
     );
     let spawn_started_at = Instant::now();
@@ -146,10 +151,7 @@ pub fn ask_with_control(
         }),
     )?;
     send(&mut stdin, json!({ "method": "initialized", "params": {} }))?;
-    send(
-        &mut stdin,
-        json!({ "method": "thread/start", "id": 1, "params": {} }),
-    )?;
+    send(&mut stdin, build_thread_start_request())?;
 
     let mut reader = BufReader::new(stdout);
     let thread_started_at = Instant::now();
@@ -313,14 +315,7 @@ fn run_turn(
     );
     send(
         stdin,
-        json!({
-            "method": "turn/start",
-            "id": request_id,
-            "params": {
-                "threadId": thread_id,
-                "input": [{ "type": "text", "text": prompt }]
-            }
-        }),
+        build_turn_start_request(request_id, thread_id, prompt),
     )?;
 
     let mut line = String::new();
@@ -495,6 +490,29 @@ fn send(stdin: &mut impl Write, message: Value) -> Result<(), CodexAppServerErro
         .flush()
         .map_err(|_| "Codex App Serverへの送信を完了できませんでした。".to_string())?;
     Ok(())
+}
+
+fn build_thread_start_request() -> Value {
+    json!({
+        "method": "thread/start",
+        "id": 1,
+        "params": {
+            "model": CODEX_MODEL
+        }
+    })
+}
+
+fn build_turn_start_request(request_id: i64, thread_id: &str, prompt: &str) -> Value {
+    json!({
+        "method": "turn/start",
+        "id": request_id,
+        "params": {
+            "threadId": thread_id,
+            "input": [{ "type": "text", "text": prompt }],
+            "model": CODEX_MODEL,
+            "effort": CODEX_REASONING_EFFORT
+        }
+    })
 }
 
 fn find_codex_executable() -> PathBuf {
@@ -681,11 +699,30 @@ fn is_likely_base64_image(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_agent_message_delta, extract_agent_message_delta, extract_completed_agent_message,
+        append_agent_message_delta, build_thread_start_request, build_turn_start_request,
+        extract_agent_message_delta, extract_completed_agent_message,
         extract_image_generation_markdown, extract_raw_image_generation_markdown, select_turn_text,
-        AgentMessageText,
+        AgentMessageText, CODEX_MODEL, CODEX_REASONING_EFFORT,
     };
     use serde_json::json;
+
+    #[test]
+    fn starts_threads_with_the_configured_model() {
+        let request = build_thread_start_request();
+
+        assert_eq!(request.pointer("/params/model"), Some(&json!(CODEX_MODEL)));
+    }
+
+    #[test]
+    fn starts_turns_with_the_configured_model_and_reasoning_effort() {
+        let request = build_turn_start_request(2, "thread_1", "質問です");
+
+        assert_eq!(request.pointer("/params/model"), Some(&json!(CODEX_MODEL)));
+        assert_eq!(
+            request.pointer("/params/effort"),
+            Some(&json!(CODEX_REASONING_EFFORT))
+        );
+    }
 
     #[test]
     fn extracts_agent_message_delta() {
