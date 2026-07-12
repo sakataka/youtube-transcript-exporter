@@ -660,9 +660,7 @@ fn collect_track_for_language(
     source: CaptionSource,
     language: &str,
 ) -> Option<CaptionTrack> {
-    let Some(formats_value) = captions.and_then(|captions| captions.get(language)) else {
-        return None;
-    };
+    let formats_value = captions.and_then(|captions| captions.get(language))?;
     caption_track_from_formats(language, formats_value, source)
 }
 
@@ -674,15 +672,10 @@ fn caption_track_from_formats(
     let Ok(formats) = serde_json::from_value::<Vec<YtDlpCaption>>(formats_value.clone()) else {
         return None;
     };
-    let Some(selected) = formats
+    let selected = formats
         .into_iter()
-        .find(|format| is_selectable_caption_format(language, format))
-    else {
-        return None;
-    };
-    let Some(url) = selected.url else {
-        return None;
-    };
+        .find(|format| is_selectable_caption_format(language, format))?;
+    let url = selected.url?;
 
     Some(CaptionTrack {
         language: language.to_string(),

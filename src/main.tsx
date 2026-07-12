@@ -56,133 +56,6 @@ const codexHistoryLimit = 20;
 const codexPollIntervalMs = 900;
 const defaultPromptTemplateId = "default";
 const appName = "YouTube AI Brief";
-const defaultMarkdownThemeCss = [
-  ".markdown-output {",
-  "  color: #17202a;",
-  "  background: #ffffff;",
-  "  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;",
-  "  line-height: 1.58;",
-  "}",
-  "",
-  ".markdown-output h1,",
-  ".markdown-output h2,",
-  ".markdown-output h3,",
-  ".markdown-output h4 {",
-  "  color: #111827;",
-  "  line-height: 1.25;",
-  "  margin: 1.35em 0 0.55em;",
-  "}",
-  "",
-  ".markdown-output h1 {",
-  "  color: #0f3d5e;",
-  "  font-size: 2rem;",
-  "}",
-  "",
-  ".markdown-output h2 {",
-  "  border-bottom: 2px solid #d9e4ee;",
-  "  color: #174a87;",
-  "  font-size: 1.48rem;",
-  "  padding-bottom: 0.32em;",
-  "}",
-  "",
-  ".markdown-output h3 {",
-  "  color: #243447;",
-  "  font-size: 1.14rem;",
-  "}",
-  "",
-  ".markdown-output strong {",
-  "  color: #111827;",
-  "  font-weight: 800;",
-  "}",
-  "",
-  ".markdown-output li::marker {",
-  "  color: #31506e;",
-  "  font-weight: 800;",
-  "}",
-  "",
-  ".markdown-output ul,",
-  ".markdown-output ol {",
-  "  gap: 0.18em;",
-  "  margin-bottom: 0.85em;",
-  "}",
-  "",
-  ".markdown-output blockquote {",
-  "  border-left: 4px solid #9fb2c5;",
-  "  background: #f6f9fb;",
-  "  color: #3c4f61;",
-  "  padding: 0.7em 1em;",
-  "}",
-  "",
-  ".markdown-output th {",
-  "  background: #f6f9fb;",
-  "  color: #111827;",
-  "}",
-  "",
-  ".markdown-output code {",
-  "  background: #f5f7f8;",
-  "  color: #111827;",
-  "}",
-  "",
-  ".markdown-output pre {",
-  "  background: #111827;",
-  "}",
-  "",
-  ".markdown-output a {",
-  "  color: #174a87;",
-  "  text-decoration: underline;",
-  "  text-underline-offset: 2px;",
-  "}"
-].join("\n");
-const legacyPromptTemplateInstructions: Record<string, string> = {
-  default: [
-    "以下はYouTube動画の字幕です。内容を日本語でわかりやすく整理してください。",
-    "",
-    "次の形式で回答してください。",
-    "1. この動画の概要",
-    "2. 重要なポイント",
-    "3. 話の流れの詳細",
-    "4. 結論・主張"
-  ].join("\n"),
-  quick: [
-    "以下はYouTube動画の字幕です。内容を日本語で簡潔に要約してください。",
-    "",
-    "次の形式で回答してください。",
-    "1. 30秒でわかる要約",
-    "2. 重要なポイント5つ",
-    "3. 最後に覚えておくべき結論"
-  ].join("\n"),
-  detailed: [
-    "以下はYouTube動画の字幕です。内容を日本語で詳しく解説してください。",
-    "",
-    "次の形式で回答してください。",
-    "1. 全体の概要",
-    "2. 話題ごとの詳しい解説",
-    "3. 背景知識や前提",
-    "4. 専門用語の説明",
-    "5. 実務や学習に使える示唆",
-    "6. 注意点や不確かな点"
-  ].join("\n"),
-  argument: [
-    "以下はYouTube動画の字幕です。話者の主張、根拠、結論を日本語で整理してください。",
-    "",
-    "次の形式で回答してください。",
-    "1. 話者が一番言いたいこと",
-    "2. 主張ごとの根拠",
-    "3. 反論や弱い前提がありそうな点",
-    "4. 結論",
-    "5. 自分ならどう判断すべきか"
-  ].join("\n"),
-  study: [
-    "以下はYouTube動画の字幕です。内容を日本語で解説し、学習にも使える形で整理してください。",
-    "",
-    "次の形式で回答してください。",
-    "1. 内容の概要",
-    "2. 重要な表現やキーワード",
-    "3. 文脈上わかりにくい表現の説明",
-    "4. 日本語での自然な言い換え",
-    "5. この動画から学べること"
-  ].join("\n")
-};
 const defaultPromptTemplates: PromptTemplate[] = [
   {
     id: "default",
@@ -354,9 +227,6 @@ const uiText = {
     uiLanguage: "UI言語",
     uiLanguageDescription: "アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。",
     completionSound: "AI回答の完了時に音を鳴らす",
-    markdownThemeCss: "Markdown表示CSS",
-    markdownThemeCssDescription: "AI回答タブのMarkdown表示だけに適用するCSSです。`.markdown-output` から始まるセレクタで見出し、色、フォント、背景を調整できます。",
-    resetMarkdownTheme: "初期CSSに戻す",
     debugLog: "デバッグログ",
     debugLogDescription: "取得時間、生成AIへの依頼内容、応答タイミング、表示処理のタイミングをローカルログへ記録します。外部アプリを開かず、この画面で確認できます。",
     showDebugLog: "ログを表示",
@@ -393,7 +263,6 @@ const uiText = {
     settingsSaved: "プロンプト設定を保存しました。",
     languageSaved: "UI言語を保存しました。",
     displaySaved: "表示設定を保存しました。",
-    markdownThemeReset: "Markdown表示CSSを初期状態に戻しました。",
     newPrompt: "新しいプロンプト",
     newPromptDescription: "説明を入力してください",
     newPromptInstruction: "以下はYouTube動画の字幕です。内容を日本語で整理してください。",
@@ -494,9 +363,6 @@ const uiText = {
     uiLanguage: "UI language",
     uiLanguageDescription: "Changes the app display language. Copied prompt text still uses each template exactly as written.",
     completionSound: "Play a sound when the AI answer completes",
-    markdownThemeCss: "Markdown display CSS",
-    markdownThemeCssDescription: "CSS applied only to the AI answer Markdown view. Use selectors starting with `.markdown-output` to adjust headings, colors, fonts, and backgrounds.",
-    resetMarkdownTheme: "Reset CSS",
     debugLog: "Debug log",
     debugLogDescription: "Writes local timing logs for caption fetching, AI prompts, response timing, and rendering. You can read it here without opening another app.",
     showDebugLog: "Show log",
@@ -533,7 +399,6 @@ const uiText = {
     settingsSaved: "Prompt settings saved.",
     languageSaved: "UI language saved.",
     displaySaved: "Display settings saved.",
-    markdownThemeReset: "Markdown display CSS was reset.",
     newPrompt: "New prompt",
     newPromptDescription: "Enter a description",
     newPromptInstruction: "The following is a YouTube video transcript. Please organize the content clearly.",
@@ -584,8 +449,6 @@ const settingsResetTemplate = document.querySelector<HTMLButtonElement>("#settin
 const settingsSaveTemplate = document.querySelector<HTMLButtonElement>("#settings-save-template")!;
 const settingsUiLanguage = document.querySelector<HTMLSelectElement>("#settings-ui-language")!;
 const settingsCompletionSound = document.querySelector<HTMLInputElement>("#settings-completion-sound")!;
-const settingsMarkdownThemeCss = document.querySelector<HTMLTextAreaElement>("#settings-markdown-theme-css")!;
-const settingsResetMarkdownTheme = document.querySelector<HTMLButtonElement>("#settings-reset-markdown-theme")!;
 const settingsOpenDebugLog = document.querySelector<HTMLButtonElement>("#settings-open-debug-log")!;
 const settingsDebugLogViewer = document.querySelector<HTMLDivElement>("#settings-debug-log-viewer")!;
 const settingsDebugLogPath = document.querySelector<HTMLElement>("#settings-debug-log-path")!;
@@ -634,9 +497,6 @@ const followUpSubmit = document.querySelector<HTMLButtonElement>("#follow-up-sub
 const captionListRoot = createRoot(captionList);
 const transcriptSearchResultsRoot = createRoot(transcriptSearchResults);
 const codexHistoryListRoot = createRoot(codexHistoryList);
-const markdownThemeStyle = document.createElement("style");
-markdownThemeStyle.id = "markdown-theme-style";
-document.head.append(markdownThemeStyle);
 
 let latestCaptionList: CaptionListSuccess | null = null;
 let selectedCaption: CaptionOption | null = null;
@@ -676,7 +536,6 @@ let codexMarkdownCache: { markdown: string; timestampBaseUrl: string; html: stri
 clearUrlInputOnLaunch();
 renderPromptTemplates();
 renderAppOptions();
-applyMarkdownTheme();
 renderTranscriptDisplayMode();
 renderTranscriptSearch();
 renderCodexControls();
@@ -1079,21 +938,11 @@ settingsSaveDisplay.addEventListener("click", () => {
   appSettings.uiLanguage = settingsUiLanguage.value === "en" ? "en" : "ja";
   appSettings.completionSoundEnabled = settingsCompletionSound.checked;
   completionAudioPrimed = false;
-  appSettings.markdownThemeCss = settingsMarkdownThemeCss.value;
   saveAppSettings();
-  applyMarkdownTheme();
   applyUiLanguage();
   renderPromptSettingsList(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
   primeCompletionAudio();
   showMessage(t("displaySaved"));
-});
-
-settingsResetMarkdownTheme.addEventListener("click", () => {
-  settingsMarkdownThemeCss.value = defaultMarkdownThemeCss;
-  appSettings.markdownThemeCss = defaultMarkdownThemeCss;
-  saveAppSettings();
-  applyMarkdownTheme();
-  showMessage(t("markdownThemeReset"));
 });
 
 settingsOpenDebugLog.addEventListener("click", async () => {
@@ -2342,7 +2191,6 @@ function renderAppOptions() {
   syncCheckbox(includeImagePrompt, appSettings.includeImagePrompt);
   syncCheckbox(formatAutomaticTranscript, appSettings.formatAutomaticTranscript);
   syncCheckbox(settingsCompletionSound, appSettings.completionSoundEnabled);
-  settingsMarkdownThemeCss.value = appSettings.markdownThemeCss;
   renderTranscriptDisplayMode();
 }
 
@@ -2366,7 +2214,6 @@ function openPromptSettings() {
   showSettingsSection(activeSettingsSection);
   settingsUiLanguage.value = appSettings.uiLanguage;
   syncCheckbox(settingsCompletionSound, appSettings.completionSoundEnabled);
-  settingsMarkdownThemeCss.value = appSettings.markdownThemeCss;
   renderPromptSettingsList(promptTemplateSelect.value || promptSettings.defaultTemplateId);
   renderPromptSettingsEditor(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
   document.dispatchEvent(new CustomEvent("ui:settings-dialog-request", { detail: true }));
@@ -2454,10 +2301,6 @@ function applyUiLanguage() {
   }
 }
 
-function applyMarkdownTheme() {
-  markdownThemeStyle.textContent = appSettings.markdownThemeCss || defaultMarkdownThemeCss;
-}
-
 function playCompletionSound() {
   if (!appSettings.completionSoundEnabled) {
     return;
@@ -2518,13 +2361,7 @@ function primeCompletionAudio() {
 }
 
 function getCompletionAudioContext() {
-  const AudioContextConstructor =
-    window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextConstructor) {
-    return null;
-  }
-
-  const audioContext = completionAudioContext ?? new AudioContextConstructor();
+  const audioContext = completionAudioContext ?? new AudioContext();
   completionAudioContext = audioContext;
   return audioContext;
 }
@@ -2557,7 +2394,6 @@ function loadAppSettings(): AppSettings {
     includeImagePrompt: true,
     formatAutomaticTranscript: true,
     transcriptDisplayMode: "plain",
-    markdownThemeCss: defaultMarkdownThemeCss,
     completionSoundEnabled: true
   };
 
@@ -2576,16 +2412,8 @@ function loadAppSettings(): AppSettings {
       includeImagePrompt: parsed.includeImagePrompt !== false,
       formatAutomaticTranscript: parsed.formatAutomaticTranscript !== false,
       transcriptDisplayMode,
-      markdownThemeCss:
-        typeof parsed.markdownThemeCss === "string" && parsed.markdownThemeCss.trim()
-          ? parsed.markdownThemeCss
-          : defaultMarkdownThemeCss,
       completionSoundEnabled: parsed.completionSoundEnabled !== false
     };
-
-    if ("recentUrls" in parsed) {
-      localStorage.setItem(appSettingsStorageKey, JSON.stringify(settings));
-    }
 
     return settings;
   } catch {
@@ -2630,7 +2458,6 @@ function loadPromptSettings(): PromptSettings {
       ? parsed.templates
           .map(normalizePromptTemplate)
           .filter((template): template is PromptTemplate => Boolean(template))
-          .map(migrateBuiltInPromptTemplate)
       : [];
 
     if (templates.length === 0) {
@@ -2660,20 +2487,6 @@ function createDefaultPromptSettings(): PromptSettings {
   return {
     defaultTemplateId: defaultPromptTemplateId,
     templates: defaultPromptTemplates.map((template) => ({ ...template }))
-  };
-}
-
-function migrateBuiltInPromptTemplate(template: PromptTemplate): PromptTemplate {
-  const currentTemplate = defaultPromptTemplates.find((item) => item.id === template.id);
-  const legacyInstruction = legacyPromptTemplateInstructions[template.id];
-
-  if (!currentTemplate || template.instruction !== legacyInstruction) {
-    return template;
-  }
-
-  return {
-    ...template,
-    instruction: currentTemplate.instruction
   };
 }
 

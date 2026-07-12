@@ -30,10 +30,10 @@ pub struct CodexRunControl {
 impl CodexRunControl {
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
-        if let Ok(mut child) = self.child.lock() {
-            if let Some(child) = child.as_mut() {
-                let _ = child.kill();
-            }
+        if let Ok(mut child) = self.child.lock()
+            && let Some(child) = child.as_mut()
+        {
+            let _ = child.kill();
         }
     }
 
@@ -124,11 +124,11 @@ pub fn ask_with_control(
     let stderr_handle = thread::spawn(move || {
         let reader = BufReader::new(stderr);
         for line in reader.lines().map_while(Result::ok) {
-            if let Ok(mut buffer) = stderr_for_thread.lock() {
-                if buffer.len() < 4000 {
-                    buffer.push_str(&line);
-                    buffer.push('\n');
-                }
+            if let Ok(mut buffer) = stderr_for_thread.lock()
+                && buffer.len() < 4000
+            {
+                buffer.push_str(&line);
+                buffer.push('\n');
             }
         }
     });
@@ -453,11 +453,11 @@ fn handle_error_message(
 }
 
 fn cleanup_child(control: &CodexRunControl) {
-    if let Ok(mut child_slot) = control.child.lock() {
-        if let Some(mut child) = child_slot.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
+    if let Ok(mut child_slot) = control.child.lock()
+        && let Some(mut child) = child_slot.take()
+    {
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }
 
@@ -645,10 +645,10 @@ fn extract_image_generation_markdown(message: &Value) -> Option<String> {
         return None;
     }
 
-    if let Some(result) = item.get("result").and_then(Value::as_str) {
-        if let Some(markdown) = image_result_to_markdown(result) {
-            return Some(markdown);
-        }
+    if let Some(result) = item.get("result").and_then(Value::as_str)
+        && let Some(markdown) = image_result_to_markdown(result)
+    {
+        return Some(markdown);
     }
 
     item.get("savedPath")

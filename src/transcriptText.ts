@@ -14,7 +14,7 @@ export function getTranscriptTextForDisplay(transcript: TranscriptSuccess, setti
   return getPlainTranscriptText(transcript, settings);
 }
 
-export function getPlainTranscriptText(transcript: TranscriptSuccess, settings: AppSettings) {
+function getPlainTranscriptText(transcript: TranscriptSuccess, settings: AppSettings) {
   if (transcript.source !== "automatic" || !settings.formatAutomaticTranscript) {
     return transcript.text;
   }
@@ -23,7 +23,7 @@ export function getPlainTranscriptText(transcript: TranscriptSuccess, settings: 
   return formatted || transcript.text;
 }
 
-export function buildTimestampedTranscriptText(transcript: TranscriptSuccess, settings: AppSettings) {
+function buildTimestampedTranscriptText(transcript: TranscriptSuccess, settings: AppSettings) {
   const segments = getSearchableSegments(transcript, settings);
 
   if (segments.length === 0) {
@@ -33,7 +33,7 @@ export function buildTimestampedTranscriptText(transcript: TranscriptSuccess, se
   return segments.map((segment) => `${segment.startLabel} ${segment.text}`).join("\n");
 }
 
-export function formatAutomaticTranscriptText(transcript: TranscriptSuccess, settings: AppSettings) {
+function formatAutomaticTranscriptText(transcript: TranscriptSuccess, settings: AppSettings) {
   const segments = getDisplaySegments(transcript, settings);
 
   if (segments.length === 0) {
@@ -49,7 +49,7 @@ export function formatAutomaticTranscriptText(transcript: TranscriptSuccess, set
   return paragraphs.length > 0 ? paragraphs.join("\n\n") : joinedText;
 }
 
-export function formatTranscriptParagraphs(text: string) {
+function formatTranscriptParagraphs(text: string) {
   const normalized = normalizeTranscriptSegment(text);
 
   if (!normalized) {
@@ -95,7 +95,7 @@ export function normalizeTranscriptSegment(text: string) {
   return removeUnnaturalJapaneseSpaces(text.replace(/\s+/g, " ").trim());
 }
 
-export function removeUnnaturalJapaneseSpaces(text: string) {
+function removeUnnaturalJapaneseSpaces(text: string) {
   return text
     .replace(
       /([\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}])\s+([\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}、。！？])/gu,
@@ -107,7 +107,7 @@ export function removeUnnaturalJapaneseSpaces(text: string) {
     );
 }
 
-export function splitTranscriptSentences(text: string) {
+function splitTranscriptSentences(text: string) {
   const sentences: string[] = [];
   let current = "";
 
@@ -132,7 +132,7 @@ export function splitTranscriptSentences(text: string) {
   return sentences.length > 0 ? sentences : [text];
 }
 
-export function isSentenceBoundary(text: string, index: number) {
+function isSentenceBoundary(text: string, index: number) {
   const character = text[index] ?? "";
 
   if (/[。！？!?]/.test(character)) {
@@ -148,7 +148,7 @@ export function isSentenceBoundary(text: string, index: number) {
   return !/\d/.test(previous) && (!next || /\s/.test(next));
 }
 
-export function joinTranscriptParts(parts: string[]) {
+function joinTranscriptParts(parts: string[]) {
   return parts.reduce((joined, part) => {
     if (!joined) {
       return part;
@@ -158,14 +158,14 @@ export function joinTranscriptParts(parts: string[]) {
   }, "");
 }
 
-export function shouldJoinWithoutSpace(left: string, right: string) {
+function shouldJoinWithoutSpace(left: string, right: string) {
   return (
     /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]$/u.test(left) ||
     /^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}、。！？]/u.test(right)
   );
 }
 
-export function endsSentence(text: string) {
+function endsSentence(text: string) {
   return /[。！？.!?]$/.test(text);
 }
 
@@ -173,7 +173,7 @@ export function getSearchableSegments(transcript: TranscriptSuccess, settings: A
   return getDisplaySegments(transcript, settings);
 }
 
-export function getDisplaySegments(transcript: TranscriptSuccess, settings: AppSettings) {
+function getDisplaySegments(transcript: TranscriptSuccess, settings: AppSettings) {
   const segments = (transcript.timedSegments ?? [])
     .map((segment) => ({
       ...segment,
@@ -234,11 +234,11 @@ export function removeRollingCaptionOverlaps(segments: NormalizedTranscriptSegme
   return cleaned;
 }
 
-export function normalizeForOverlap(text: string) {
+function normalizeForOverlap(text: string) {
   return normalizeTranscriptSegment(text).toLocaleLowerCase();
 }
 
-export function findRollingOverlapLength(previousText: string, currentText: string) {
+function findRollingOverlapLength(previousText: string, currentText: string) {
   const previous = normalizeForOverlap(previousText);
   const current = normalizeForOverlap(currentText);
   const minimumOverlapLength = 1;

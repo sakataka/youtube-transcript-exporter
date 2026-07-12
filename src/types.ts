@@ -7,7 +7,7 @@ export type CaptionOption = {
   isAutoCaption: boolean;
 };
 
-export type VideoChapter = {
+type VideoChapter = {
   title: string;
   startSeconds: number;
   startLabel: string;
@@ -78,21 +78,17 @@ export type PromptSettings = {
   templates: PromptTemplate[];
 };
 
-export type UiLanguage = "ja" | "en";
 export type TranscriptDisplayMode = "plain" | "timestamped";
 
 export type AppSettings = {
-  uiLanguage: UiLanguage;
+  uiLanguage: "ja" | "en";
   includeImagePrompt: boolean;
   formatAutomaticTranscript: boolean;
   transcriptDisplayMode: TranscriptDisplayMode;
-  markdownThemeCss: string;
   completionSoundEnabled: boolean;
 };
 
-export type StoredAppSettings = Partial<AppSettings> & {
-  recentUrls?: unknown;
-};
+export type StoredAppSettings = Partial<AppSettings>;
 
 export type CodexQuestionKind = "initial" | "rerun" | "followup" | "selection" | "history";
 export type CodexOutputMode = "transcript" | "copyPrompt" | "codexAnswer";

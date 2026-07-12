@@ -280,11 +280,6 @@ export function AppShell() {
                 </NativeSelect>
                 <p className="hint" data-i18n="uiLanguageDescription">アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。</p>
                 <LegacyCheckbox id="settings-completion-sound" i18n="completionSound">AI回答の完了時に音を鳴らす</LegacyCheckbox>
-                <div className="markdown-theme-settings" hidden>
-                  <label className="label" htmlFor="settings-markdown-theme-css" data-i18n="markdownThemeCss">Markdown表示CSS</label>
-                  <Textarea id="settings-markdown-theme-css" className="settings-markdown-theme-css" spellCheck="false" />
-                  <p className="hint" data-i18n="markdownThemeCssDescription">AI回答タブのMarkdown表示だけに適用するCSSです。`.markdown-output` から始まるセレクタで見出し、色、フォント、背景を調整できます。</p>
-                </div>
                 <div className="debug-log-settings">
                   <span className="label" data-i18n="debugLog">デバッグログ</span>
                   <p className="hint" data-i18n="debugLogDescription">取得時間、生成AIへの依頼内容、応答タイミング、表示処理のタイミングをローカルログへ記録します。通常は見る必要はありません。</p>
@@ -296,7 +291,6 @@ export function AppShell() {
                   </div>
                 </div>
                 <div className="settings-footer">
-                  <ToolbarButton id="settings-reset-markdown-theme" i18n="resetMarkdownTheme" hidden>初期CSSに戻す</ToolbarButton>
                   <Button id="settings-save-display" type="button" size="lg" data-i18n="save">保存</Button>
                 </div>
               </div>
