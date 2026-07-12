@@ -1,4 +1,10 @@
 import "./style.css";
+import "./theme";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
+
+import { AppShell } from "./components/AppShell";
+import { CaptionOptions, HistoryList, SearchResults } from "./components/DynamicUi";
 import { invokeBackend } from "./backendClient";
 import { getCodexAnswerTextForCopy, normalizeCodexAnswerMarkdown } from "./codexAnswerText";
 import { escapeHtml, renderMarkdown as renderMarkdownOutput } from "./markdownRenderer";
@@ -546,318 +552,24 @@ const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) {
   throw new Error("App root was not found.");
 }
-
-app.innerHTML = `
-  <section class="workspace">
-    <header class="app-header">
-      <div class="brand-lockup">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <path d="M21 7.3a3 3 0 0 0-2.1-2.1C17 4.7 12 4.7 12 4.7s-5 0-6.9.5A3 3 0 0 0 3 7.3 31.4 31.4 0 0 0 2.5 12c0 1.6.1 3.2.5 4.7a3 3 0 0 0 2.1 2.1c1.9.5 6.9.5 6.9.5s5 0 6.9-.5a3 3 0 0 0 2.1-2.1c.4-1.5.5-3.1.5-4.7 0-1.6-.1-3.2-.5-4.7Z"></path>
-            <path d="m10 9 5 3-5 3V9Z"></path>
-          </svg>
-        </span>
-        <div>
-          <h1>${appName}</h1>
-          <p data-i18n="heading">YouTube動画をAI向けに整理</p>
-        </div>
-      </div>
-      <form class="input-panel" id="caption-form">
-        <div class="command-row">
-          <input
-            id="youtube-url"
-            name="url"
-            type="url"
-            aria-label="YouTube URL"
-            placeholder="https://www.youtube.com/watch?v=..."
-            autocomplete="off"
-            autofocus
-            required
-          />
-          <button id="ask-codex-button" type="button" disabled data-i18n="askCodex">Codexに質問</button>
-          <button class="secondary-button compact-button icon-label-button" id="transcript-search-toggle" type="button" disabled aria-expanded="false" aria-controls="transcript-search-panel">
-            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="11" cy="11" r="6"></circle>
-              <path d="m16 16 4 4"></path>
-            </svg>
-            <span data-i18n="transcriptSearchToggle">検索</span>
-          </button>
-        </div>
-        <div class="media-command-row">
-          <label class="sr-only" for="local-media-path" data-i18n="mediaPathLabel">ローカル動画ファイル</label>
-          <input
-            id="local-media-path"
-            name="media-path"
-            type="text"
-            data-i18n-placeholder="mediaPathPlaceholder"
-            placeholder="/Users/you/Movies/video.mp4"
-            autocomplete="off"
-          />
-          <button class="secondary-button compact-button" id="transcribe-media-button" type="button" data-i18n="transcribeMedia">動画を文字起こし</button>
-        </div>
-        <p class="status-message" id="message" hidden></p>
-      </form>
-      <div class="app-header-actions">
-        <button class="secondary-button compact-button icon-label-button" id="reload-app-button" type="button">
-          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M21 12a9 9 0 1 1-2.6-6.4"></path>
-            <path d="M21 3v6h-6"></path>
-          </svg>
-          <span data-i18n="reloadButton">更新</span>
-        </button>
-        <button class="secondary-button compact-button icon-label-button" id="prompt-settings-button" type="button">
-          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19 12a7 7 0 0 0-.1-1.1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.9-1.1L14.2 3h-4.4l-.4 2.8A7 7 0 0 0 7.5 7L5.1 6l-2 3.5 2 1.5a7 7 0 0 0 0 2.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.9 1.1l.4 2.8h4.4l.4-2.8a7 7 0 0 0 1.9-1.1l2.4 1 2-3.5-2-1.5c.1-.3.1-.7.1-1.1Z"></path>
-          </svg>
-          <span data-i18n="settingsButton">設定</span>
-        </button>
-      </div>
-    </header>
-
-    <section class="result-layout" aria-live="polite">
-      <div class="meta-panel">
-        <div class="video-preview" id="video-preview" hidden>
-          <img id="video-thumbnail" alt="" loading="lazy" />
-          <div class="video-preview-body">
-            <span class="label" data-i18n="transcriptTitle">AI向け入力</span>
-            <strong id="video-preview-title">-</strong>
-          </div>
-        </div>
-        <div class="meta-summary-item">
-          <span class="label" data-i18n="selectedLanguage">選択言語</span>
-          <strong id="language">-</strong>
-        </div>
-        <div class="meta-summary-item">
-          <span class="label" data-i18n="characterCount">文字数</span>
-          <strong id="char-count">0</strong>
-        </div>
-        <div class="meta-summary-item">
-          <span class="label" data-i18n="videoDuration">動画時間</span>
-          <strong id="video-duration">-</strong>
-        </div>
-        <div class="meta-summary-item">
-          <span class="label" data-i18n="canonicalUrl">動画URL</span>
-          <strong id="canonical-url">-</strong>
-        </div>
-        <div class="meta-summary-item">
-          <span class="label" data-i18n="viewCount">再生数</span>
-          <strong id="view-count">-</strong>
-        </div>
-        <div class="meta-summary-item">
-          <span class="label" data-i18n="captionSourceLabel">字幕種別</span>
-          <strong id="caption-source">-</strong>
-        </div>
-        <div class="meta-prompt-settings">
-          <label class="label" for="prompt-template" data-i18n="copyPrompt">生成AIプロンプト</label>
-          <select id="prompt-template"></select>
-          <p class="prompt-description" id="prompt-description"></p>
-        </div>
-      </div>
-
-      <div class="output-panel">
-        <h2 id="video-title" hidden>AI向け入力</h2>
-        <section class="caption-panel" id="caption-panel" hidden>
-          <div class="caption-panel-header">
-            <h3 data-i18n="captionsTitle">取得可能な字幕</h3>
-            <span id="caption-count">0件</span>
-          </div>
-          <div class="caption-list" id="caption-list"></div>
-        </section>
-        <section class="search-panel" id="transcript-search-panel" hidden>
-          <div class="search-header">
-            <h3 data-i18n="transcriptSearchTitle">字幕内検索</h3>
-            <span id="transcript-search-count" data-i18n="transcriptSearchDisabled">字幕取得後に検索できます。</span>
-          </div>
-          <label class="label" for="transcript-search" data-i18n="transcriptSearchLabel">検索語</label>
-          <input id="transcript-search" type="search" autocomplete="off" disabled data-i18n-placeholder="transcriptSearchPlaceholder" />
-          <div class="search-results" id="transcript-search-results"></div>
-        </section>
-        <div class="output-tabs" role="tablist" aria-label="Output view">
-          <button class="output-tab is-active" id="transcript-view-tab" type="button" data-output-mode="transcript" role="tab" aria-selected="true" aria-controls="transcript-output" data-i18n="transcriptView">字幕本文</button>
-          <button class="output-tab" id="copy-prompt-view-tab" type="button" data-output-mode="copyPrompt" role="tab" aria-selected="false" aria-controls="transcript-output" data-i18n="copyPromptView">生成AIプロンプト</button>
-          <button class="output-tab" id="codex-answer-view-tab" type="button" data-output-mode="codexAnswer" role="tab" aria-selected="false" aria-controls="transcript-output" data-i18n="codexAnswerView">AI回答</button>
-          <span class="output-tab-divider" aria-hidden="true"></span>
-          <div class="codex-toolbar" id="codex-toolbar" hidden>
-            <button class="secondary-button compact-button" id="copy-codex-answer" type="button" data-i18n="copyAnswer">回答をコピー</button>
-            <button class="secondary-button compact-button" id="save-codex-markdown" type="button" data-i18n="saveMarkdown" hidden>Markdown保存</button>
-            <button class="secondary-button compact-button" id="rerun-codex-answer" type="button" data-i18n="rerunAnswer">再実行</button>
-            <button class="secondary-button compact-button" id="follow-up-codex-answer" type="button" data-i18n="followUpAnswer">追加質問</button>
-            <button class="secondary-button compact-button" id="ask-selection-codex" type="button" data-i18n="askSelection">選択範囲で質問</button>
-            <button class="secondary-button compact-button danger-button" id="cancel-codex-answer" type="button" data-i18n="cancelCodex" hidden>キャンセル</button>
-          </div>
-        </div>
-        <textarea id="transcript-output" spellcheck="false" readonly></textarea>
-        <div id="codex-answer-output" class="markdown-output" hidden></div>
-        <section class="history-panel" id="codex-history-panel" hidden>
-          <div class="history-header">
-            <h3 data-i18n="codexHistoryTitle">AI回答履歴</h3>
-            <div class="history-header-actions">
-              <span id="codex-history-count">0</span>
-              <button class="secondary-button compact-button" id="clear-codex-history" type="button" data-i18n="clearCodexHistory">履歴をクリア</button>
-            </div>
-          </div>
-          <div class="history-list" id="codex-history-list"></div>
-        </section>
-      </div>
-    </section>
-
-    <div class="settings-backdrop" id="prompt-settings-modal" hidden>
-      <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="prompt-settings-title">
-        <div class="settings-header">
-          <div>
-            <p class="eyebrow" data-i18n="settingsEyebrow">Settings</p>
-            <h2 id="prompt-settings-title" data-i18n="settingsTitle">設定</h2>
-          </div>
-          <button class="secondary-button compact-button" id="prompt-settings-close" type="button" data-i18n="close">閉じる</button>
-        </div>
-
-        <div class="settings-tabs" role="tablist" aria-label="Settings sections">
-          <button class="settings-tab is-active" id="settings-prompts-tab" type="button" role="tab" aria-selected="true" aria-controls="settings-prompts-section" data-settings-section="prompts" data-i18n="promptsTab">プロンプト</button>
-          <button class="settings-tab" id="settings-copy-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-copy-section" data-settings-section="copy" data-i18n="copyTab">コピー</button>
-          <button class="settings-tab" id="settings-display-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-display-section" data-settings-section="display" data-i18n="displayTab">表示</button>
-        </div>
-
-        <div class="settings-body">
-          <section class="settings-section" id="settings-prompts-section" role="tabpanel" aria-labelledby="settings-prompts-tab">
-            <div class="settings-template-list">
-              <label class="label" for="settings-template-select" data-i18n="template">テンプレート</label>
-              <select id="settings-template-select" size="6"></select>
-              <div class="settings-actions">
-                <button class="secondary-button" id="settings-add-template" type="button" data-i18n="add">追加</button>
-                <button class="secondary-button" id="settings-delete-template" type="button" data-i18n="delete">削除</button>
-              </div>
-            </div>
-
-            <div class="settings-editor">
-              <label class="label" for="settings-template-title" data-i18n="title">タイトル</label>
-              <input id="settings-template-title" type="text" />
-
-              <label class="label" for="settings-template-description" data-i18n="description">説明</label>
-              <input id="settings-template-description" type="text" />
-
-              <label class="label" for="settings-template-body" data-i18n="body">本文</label>
-              <textarea id="settings-template-body" class="settings-template-body" spellcheck="false"></textarea>
-
-              <label class="default-template-toggle">
-                <input id="settings-template-default" type="checkbox" />
-                <span data-i18n="defaultTemplate">このテンプレートを自動コピーのデフォルトにする</span>
-              </label>
-
-              <div class="settings-footer">
-                <button class="secondary-button" id="settings-reset-template" type="button" data-i18n="reset">初期状態に戻す</button>
-                <button id="settings-save-template" type="button" data-i18n="save">保存</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="settings-section settings-section-single" id="settings-copy-section" role="tabpanel" aria-labelledby="settings-copy-tab" hidden>
-            <div class="settings-editor">
-              <div>
-                <h3 class="settings-section-title" data-i18n="copySettingsTitle">コピー設定</h3>
-                <p class="hint" data-i18n="copySettingsDescription">字幕取得後にクリップボードへ入れる内容と、AIへ渡す追加指示をまとめて管理します。</p>
-              </div>
-
-              <div class="copy-option-row">
-                <label class="option-toggle">
-                  <input id="include-image-prompt" type="checkbox" />
-                  <span data-i18n="includeImagePrompt">画像生成指示を含む</span>
-                </label>
-                <label class="option-toggle">
-                  <input id="format-automatic-transcript" type="checkbox" />
-                  <span data-i18n="formatAutomaticTranscript">自動字幕を整形</span>
-                </label>
-              </div>
-
-              <div class="display-mode-control" role="group" aria-labelledby="transcript-display-mode-label">
-                <span class="label" id="transcript-display-mode-label" data-i18n="transcriptDisplayModeLabel">字幕表示</span>
-                <div class="segmented-control">
-                  <label>
-                    <input type="radio" name="transcript-display-mode" value="plain" />
-                    <span data-i18n="plainTranscript">通常</span>
-                  </label>
-                  <label>
-                    <input type="radio" name="transcript-display-mode" value="timestamped" />
-                    <span data-i18n="timestampedTranscript">タイムスタンプ付き</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section class="settings-section settings-section-single" id="settings-display-section" role="tabpanel" aria-labelledby="settings-display-tab" hidden>
-            <div class="settings-editor">
-              <label class="label" for="settings-ui-language" data-i18n="uiLanguage">UI言語</label>
-              <select id="settings-ui-language">
-                <option value="ja" data-i18n="japanese">日本語</option>
-                <option value="en" data-i18n="english">English</option>
-              </select>
-              <p class="hint" data-i18n="uiLanguageDescription">アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。</p>
-
-              <label class="default-template-toggle">
-                <input id="settings-completion-sound" type="checkbox" />
-                <span data-i18n="completionSound">AI回答の完了時に音を鳴らす</span>
-              </label>
-
-              <div class="markdown-theme-settings" hidden>
-                <label class="label" for="settings-markdown-theme-css" data-i18n="markdownThemeCss">Markdown表示CSS</label>
-                <textarea id="settings-markdown-theme-css" class="settings-markdown-theme-css" spellcheck="false"></textarea>
-                <p class="hint" data-i18n="markdownThemeCssDescription">AI回答タブのMarkdown表示だけに適用するCSSです。\`.markdown-output\` から始まるセレクタで見出し、色、フォント、背景を調整できます。</p>
-              </div>
-
-              <div class="debug-log-settings">
-                <span class="label" data-i18n="debugLog">デバッグログ</span>
-                <p class="hint" data-i18n="debugLogDescription">取得時間、生成AIへの依頼内容、応答タイミング、表示処理のタイミングをローカルログへ記録します。通常は見る必要はありません。</p>
-                <button class="secondary-button" id="settings-open-debug-log" type="button" data-i18n="showDebugLog">ログを表示</button>
-                <div class="debug-log-viewer" id="settings-debug-log-viewer" hidden>
-                  <span class="debug-log-path-label" data-i18n="debugLogPath">保存先</span>
-                  <code id="settings-debug-log-path"></code>
-                  <textarea id="settings-debug-log-content" class="debug-log-content" spellcheck="false" readonly></textarea>
-                </div>
-              </div>
-
-              <div class="settings-footer">
-                <button class="secondary-button" id="settings-reset-markdown-theme" type="button" data-i18n="resetMarkdownTheme" hidden>初期CSSに戻す</button>
-                <button id="settings-save-display" type="button" data-i18n="save">保存</button>
-              </div>
-            </div>
-          </section>
-        </div>
-      </section>
-    </div>
-    <div class="settings-backdrop" id="follow-up-modal" hidden>
-      <section class="follow-up-panel" role="dialog" aria-modal="true" aria-labelledby="follow-up-title">
-        <div class="settings-header">
-          <div>
-            <p class="eyebrow">Codex</p>
-            <h2 id="follow-up-title" data-i18n="followUpTitle">追加質問</h2>
-          </div>
-          <button class="secondary-button compact-button" id="follow-up-close" type="button" data-i18n="followUpCancel">閉じる</button>
-        </div>
-        <div class="follow-up-body">
-          <label class="label" for="follow-up-question" data-i18n="followUpLabel">質問内容</label>
-          <textarea id="follow-up-question" class="follow-up-question" spellcheck="true" data-i18n-placeholder="followUpPlaceholder"></textarea>
-          <div class="settings-footer">
-            <button id="follow-up-submit" type="button" data-i18n="followUpSubmit">質問する</button>
-          </div>
-        </div>
-      </section>
-    </div>
-  </section>
-`;
+flushSync(() => {
+  createRoot(app).render(<AppShell />);
+});
 
 const form = document.querySelector<HTMLFormElement>("#caption-form")!;
 const urlInput = document.querySelector<HTMLInputElement>("#youtube-url")!;
 const mediaPathInput = document.querySelector<HTMLInputElement>("#local-media-path")!;
 const askCodexButton = document.querySelector<HTMLButtonElement>("#ask-codex-button")!;
+const askCodexButtonLabel = document.querySelector<HTMLElement>("#ask-codex-button-label")!;
 const transcribeMediaButton = document.querySelector<HTMLButtonElement>("#transcribe-media-button")!;
+const transcribeMediaButtonLabel = document.querySelector<HTMLElement>("#transcribe-media-button-label")!;
 const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
 const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
 const reloadAppButton = document.querySelector<HTMLButtonElement>("#reload-app-button")!;
 const promptSettingsButton = document.querySelector<HTMLButtonElement>("#prompt-settings-button")!;
 const includeImagePrompt = document.querySelector<HTMLInputElement>("#include-image-prompt")!;
 const formatAutomaticTranscript = document.querySelector<HTMLInputElement>("#format-automatic-transcript")!;
-const promptSettingsModal = document.querySelector<HTMLDivElement>("#prompt-settings-modal")!;
+const promptSettingsModal = document.querySelector<HTMLElement>("#prompt-settings-modal")!;
 const promptSettingsClose = document.querySelector<HTMLButtonElement>("#prompt-settings-close")!;
 const settingsTemplateSelect = document.querySelector<HTMLSelectElement>("#settings-template-select")!;
 const settingsTemplateTitle = document.querySelector<HTMLInputElement>("#settings-template-title")!;
@@ -870,11 +582,6 @@ const settingsAddTemplate = document.querySelector<HTMLButtonElement>("#settings
 const settingsDeleteTemplate = document.querySelector<HTMLButtonElement>("#settings-delete-template")!;
 const settingsResetTemplate = document.querySelector<HTMLButtonElement>("#settings-reset-template")!;
 const settingsSaveTemplate = document.querySelector<HTMLButtonElement>("#settings-save-template")!;
-const settingsTabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".settings-tab"));
-const outputTabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".output-tab"));
-const settingsPromptsSection = document.querySelector<HTMLElement>("#settings-prompts-section")!;
-const settingsCopySection = document.querySelector<HTMLElement>("#settings-copy-section")!;
-const settingsDisplaySection = document.querySelector<HTMLElement>("#settings-display-section")!;
 const settingsUiLanguage = document.querySelector<HTMLSelectElement>("#settings-ui-language")!;
 const settingsCompletionSound = document.querySelector<HTMLInputElement>("#settings-completion-sound")!;
 const settingsMarkdownThemeCss = document.querySelector<HTMLTextAreaElement>("#settings-markdown-theme-css")!;
@@ -889,7 +596,7 @@ const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
 const captionCount = document.querySelector<HTMLElement>("#caption-count")!;
 const output = document.querySelector<HTMLTextAreaElement>("#transcript-output")!;
 const codexAnswerOutput = document.querySelector<HTMLDivElement>("#codex-answer-output")!;
-const message = document.querySelector<HTMLParagraphElement>("#message")!;
+const message = document.querySelector<HTMLElement>("#message")!;
 const title = document.querySelector<HTMLHeadingElement>("#video-title")!;
 const language = document.querySelector<HTMLElement>("#language")!;
 const charCount = document.querySelector<HTMLElement>("#char-count")!;
@@ -920,10 +627,13 @@ const clearCodexHistoryButton = document.querySelector<HTMLButtonElement>("#clea
 const videoPreview = document.querySelector<HTMLDivElement>("#video-preview")!;
 const videoThumbnail = document.querySelector<HTMLImageElement>("#video-thumbnail")!;
 const videoPreviewTitle = document.querySelector<HTMLElement>("#video-preview-title")!;
-const followUpModal = document.querySelector<HTMLDivElement>("#follow-up-modal")!;
+const followUpModal = document.querySelector<HTMLElement>("#follow-up-modal")!;
 const followUpQuestion = document.querySelector<HTMLTextAreaElement>("#follow-up-question")!;
 const followUpClose = document.querySelector<HTMLButtonElement>("#follow-up-close")!;
 const followUpSubmit = document.querySelector<HTMLButtonElement>("#follow-up-submit")!;
+const captionListRoot = createRoot(captionList);
+const transcriptSearchResultsRoot = createRoot(transcriptSearchResults);
+const codexHistoryListRoot = createRoot(codexHistoryList);
 const markdownThemeStyle = document.createElement("style");
 markdownThemeStyle.id = "markdown-theme-style";
 document.head.append(markdownThemeStyle);
@@ -1219,22 +929,18 @@ codexAnswerOutput.addEventListener("click", async (event) => {
   await openExternalUrl(link.href);
 });
 
-outputTabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    const mode = tab.dataset.outputMode;
-    if (mode === "transcript" || mode === "copyPrompt" || mode === "codexAnswer") {
-      setOutputMode(mode);
-    }
-  });
+document.addEventListener("ui:output-mode-change", (event) => {
+  const mode = (event as CustomEvent<string>).detail;
+  if (mode === "transcript" || mode === "copyPrompt" || mode === "codexAnswer") {
+    setOutputMode(mode, false);
+  }
 });
 
-settingsTabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    const section = tab.dataset.settingsSection;
-    if (section === "prompts" || section === "copy" || section === "display") {
-      showSettingsSection(section);
-    }
-  });
+document.addEventListener("ui:settings-section-change", (event) => {
+  const section = (event as CustomEvent<string>).detail;
+  if (section === "prompts" || section === "copy" || section === "display") {
+    activeSettingsSection = section;
+  }
 });
 
 promptSettingsButton.addEventListener("click", () => {
@@ -1249,21 +955,12 @@ promptSettingsClose.addEventListener("click", () => {
   closePromptSettings();
 });
 
-promptSettingsModal.addEventListener("click", (event) => {
-  if (event.target === promptSettingsModal) {
-    closePromptSettings();
-  }
-});
-
 followUpClose.addEventListener("click", () => {
   closeFollowUpModal();
 });
 
-followUpModal.addEventListener("click", (event) => {
-  if (event.target === followUpModal) {
-    closeFollowUpModal();
-  }
-});
+document.addEventListener("ui:settings-dialog-close-request", closePromptSettings);
+document.addEventListener("ui:follow-up-dialog-close-request", closeFollowUpModal);
 
 followUpSubmit.addEventListener("click", async () => {
   await submitFollowUpQuestion();
@@ -1288,19 +985,19 @@ clearCodexHistoryButton.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (!followUpModal.hidden && event.key === "Escape") {
+  if (isDialogOpen(followUpModal) && event.key === "Escape") {
     event.preventDefault();
     closeFollowUpModal();
     return;
   }
 
-  if (!followUpModal.hidden && (event.metaKey || event.ctrlKey) && event.key === "Enter") {
+  if (isDialogOpen(followUpModal) && (event.metaKey || event.ctrlKey) && event.key === "Enter") {
     event.preventDefault();
     void submitFollowUpQuestion();
     return;
   }
 
-  if (promptSettingsModal.hidden) {
+  if (!isDialogOpen(promptSettingsModal)) {
     return;
   }
 
@@ -1310,9 +1007,6 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (event.key === "Tab") {
-    trapSettingsFocus(event);
-  }
 });
 
 document.addEventListener("selectionchange", () => {
@@ -1427,24 +1121,19 @@ function renderCaptionOptions(captions: CaptionOption[]) {
           caption.source === selectedCaption?.source
       )
     : 0;
-  captionList.innerHTML = captions
-    .map(
-      (caption, index) => `
-        <label class="caption-option">
-          <input
-            type="radio"
-            name="caption-option"
-            value="${index}"
-            ${index === Math.max(selectedIndex, 0) ? "checked" : ""}
-          />
-          <span class="caption-option-body">
-            <strong>${escapeHtml(caption.name || caption.language)}</strong>
-            <span>${escapeHtml(caption.language)} / ${escapeHtml(formatCaptionSource(caption.source))}</span>
-          </span>
-        </label>
-      `
-    )
-    .join("");
+  flushSync(() => {
+    captionListRoot.render(
+      <CaptionOptions
+        options={captions.map((caption, index) => ({
+          index,
+          language: caption.language,
+          name: caption.name,
+          selected: index === Math.max(selectedIndex, 0),
+          source: formatCaptionSource(caption.source)
+        }))}
+      />
+    );
+  });
   captionCount.textContent = t("captionCount", captions.length);
   captionPanel.hidden = captions.length <= 1;
 }
@@ -1455,20 +1144,23 @@ function setCaptionLoading(isLoading: boolean) {
 
 function setTranscriptLoading(isLoading: boolean) {
   askCodexButton.disabled = isLoading || (!latestTranscript && !selectedCaption);
-  askCodexButton.textContent = isLoading ? t("fetchTranscriptLoading") : t("askCodex");
+  askCodexButtonLabel.textContent = isLoading ? t("fetchTranscriptLoading") : t("askCodex");
+  askCodexButton.setAttribute("aria-busy", String(isLoading));
   askCodexButton.classList.toggle("is-loading", isLoading);
 }
 
 function setMediaTranscriptionLoading(isLoading: boolean) {
   transcribeMediaButton.disabled = isLoading;
-  transcribeMediaButton.textContent = isLoading ? t("transcribeMediaLoading") : t("transcribeMedia");
+  transcribeMediaButtonLabel.textContent = isLoading ? t("transcribeMediaLoading") : t("transcribeMedia");
+  transcribeMediaButton.setAttribute("aria-busy", String(isLoading));
   transcribeMediaButton.classList.toggle("is-loading", isLoading);
   mediaPathInput.toggleAttribute("aria-busy", isLoading);
 }
 
 function setCodexLoading(isLoading: boolean) {
   askCodexButton.disabled = isLoading || (!latestTranscript && !selectedCaption);
-  askCodexButton.textContent = isLoading ? t("askCodexLoading") : t("askCodex");
+  askCodexButtonLabel.textContent = isLoading ? t("askCodexLoading") : t("askCodex");
+  askCodexButton.setAttribute("aria-busy", String(isLoading));
   askCodexButton.classList.toggle("is-loading", isLoading);
   cancelCodexAnswerButton.hidden = !isLoading;
   renderCodexControls();
@@ -1703,7 +1395,7 @@ function scheduleCaptionAutoCheck() {
 function clearResult() {
   latestCaptionList = null;
   selectedCaption = null;
-  captionList.innerHTML = "";
+  flushSync(() => captionListRoot.render(null));
   captionCount.textContent = t("captionCount", 0);
   captionPanel.hidden = true;
   title.textContent = t("transcriptTitle");
@@ -1854,13 +1546,11 @@ async function copyTranscriptToClipboard(transcript: TranscriptSuccess, template
   showMessage(t("copiedWithPrompt", template.label));
 }
 
-function setOutputMode(mode: CodexOutputMode) {
+function setOutputMode(mode: CodexOutputMode, syncTabs = true) {
   outputMode = mode;
-  outputTabs.forEach((tab) => {
-    const isActive = tab.dataset.outputMode === mode;
-    tab.classList.toggle("is-active", isActive);
-    tab.setAttribute("aria-selected", String(isActive));
-  });
+  if (syncTabs) {
+    document.dispatchEvent(new CustomEvent("ui:output-mode-request", { detail: mode }));
+  }
   renderOutput();
 }
 
@@ -2190,13 +1880,17 @@ function openFollowUpModal(kind: CodexQuestionKind, selectedExcerpt: string) {
 
   followUpContext = { kind, selectedExcerpt };
   followUpQuestion.value = "";
-  followUpModal.hidden = false;
+  document.dispatchEvent(new CustomEvent("ui:follow-up-dialog-request", { detail: true }));
   requestAnimationFrame(() => followUpQuestion.focus());
 }
 
 function closeFollowUpModal() {
-  followUpModal.hidden = true;
+  document.dispatchEvent(new CustomEvent("ui:follow-up-dialog-request", { detail: false }));
   followUpContext = null;
+}
+
+function isDialogOpen(dialog: HTMLElement) {
+  return dialog.dataset.state === "open";
 }
 
 async function submitFollowUpQuestion() {
@@ -2323,22 +2017,26 @@ function renderCodexHistory() {
   codexHistoryCount.textContent = codexHistory.length.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
 
   if (codexHistory.length === 0) {
-    codexHistoryList.innerHTML = `<p class="history-empty">${escapeHtml(t("codexHistoryEmpty"))}</p>`;
+    flushSync(() => codexHistoryListRoot.render(<HistoryList entries={[]} emptyLabel={t("codexHistoryEmpty")} />));
     return;
   }
 
-  codexHistoryList.innerHTML = codexHistory
-    .map((entry) => {
-      const date = new Date(entry.createdAt).toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
-      const question = entry.questionText ? ` / ${entry.questionText}` : "";
-      return `
-        <button class="history-item" type="button" data-history-id="${escapeHtml(entry.id)}">
-          <strong>${escapeHtml(entry.title)}</strong>
-          <span>${escapeHtml(date)} / ${escapeHtml(formatCaptionSource(entry.source))}${escapeHtml(question)}</span>
-        </button>
-      `;
-    })
-    .join("");
+  flushSync(() => {
+    codexHistoryListRoot.render(
+      <HistoryList
+        entries={codexHistory.map((entry) => {
+          const date = new Date(entry.createdAt).toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
+          const question = entry.questionText ? ` / ${entry.questionText}` : "";
+          return {
+            id: entry.id,
+            metadata: `${date} / ${formatCaptionSource(entry.source)}${question}`,
+            title: entry.title
+          };
+        })}
+        emptyLabel={t("codexHistoryEmpty")}
+      />
+    );
+  });
 }
 
 function restoreCodexHistoryEntry(historyId: string | undefined) {
@@ -2496,6 +2194,7 @@ function renderTranscriptDisplayMode() {
   transcriptDisplayModeInputs.forEach((input) => {
     input.checked = input.value === appSettings.transcriptDisplayMode;
   });
+  document.dispatchEvent(new CustomEvent("ui:display-mode-request", { detail: appSettings.transcriptDisplayMode }));
 }
 
 function isTranscriptDisplayMode(value: unknown): value is TranscriptDisplayMode {
@@ -2511,13 +2210,13 @@ function renderTranscriptSearch() {
 
   if (!latestTranscript) {
     transcriptSearchCount.textContent = t("transcriptSearchDisabled");
-    transcriptSearchResults.innerHTML = "";
+    flushSync(() => transcriptSearchResultsRoot.render(null));
     return;
   }
 
   if (searchIndex.length === 0) {
     transcriptSearchCount.textContent = t("transcriptSearchDisabled");
-    transcriptSearchResults.innerHTML = "";
+    flushSync(() => transcriptSearchResultsRoot.render(null));
     return;
   }
 
@@ -2525,7 +2224,7 @@ function renderTranscriptSearch() {
 
   if (!query) {
     transcriptSearchCount.textContent = t("transcriptSearchReady");
-    transcriptSearchResults.innerHTML = "";
+    flushSync(() => transcriptSearchResultsRoot.render(null));
     return;
   }
 
@@ -2536,20 +2235,18 @@ function renderTranscriptSearch() {
 
   transcriptSearchCount.textContent =
     matches.length === 0 ? t("transcriptSearchEmpty") : t("transcriptSearchCount", matches.length);
-  transcriptSearchResults.innerHTML = matches
-    .map((segment) => {
-      const timestampUrl = buildTimestampUrl(segment.startSeconds);
-      return `
-        <div class="search-result" role="button" tabindex="0" data-timestamp-url="${escapeHtml(timestampUrl)}">
-          <div class="search-result-body">
-            <strong>${escapeHtml(segment.startLabel)}</strong>
-            <p>${escapeHtml(truncateSearchResult(segment.text))}</p>
-          </div>
-          <button class="secondary-button compact-button" type="button" data-timestamp-url="${escapeHtml(timestampUrl)}" data-i18n="openTimestamp">${t("openTimestamp")}</button>
-        </div>
-      `;
-    })
-    .join("");
+  flushSync(() => {
+    transcriptSearchResultsRoot.render(
+      <SearchResults
+        results={matches.map((segment) => ({
+          startLabel: segment.startLabel,
+          text: truncateSearchResult(segment.text),
+          timestampUrl: buildTimestampUrl(segment.startSeconds)
+        }))}
+        openLabel={t("openTimestamp")}
+      />
+    );
+  });
 }
 
 function normalizeSearchText(value: string) {
@@ -2642,9 +2339,9 @@ function updatePromptDescription() {
 }
 
 function renderAppOptions() {
-  includeImagePrompt.checked = appSettings.includeImagePrompt;
-  formatAutomaticTranscript.checked = appSettings.formatAutomaticTranscript;
-  settingsCompletionSound.checked = appSettings.completionSoundEnabled;
+  syncCheckbox(includeImagePrompt, appSettings.includeImagePrompt);
+  syncCheckbox(formatAutomaticTranscript, appSettings.formatAutomaticTranscript);
+  syncCheckbox(settingsCompletionSound, appSettings.completionSoundEnabled);
   settingsMarkdownThemeCss.value = appSettings.markdownThemeCss;
   renderTranscriptDisplayMode();
 }
@@ -2668,23 +2365,25 @@ function openPromptSettings() {
   elementToRestoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   showSettingsSection(activeSettingsSection);
   settingsUiLanguage.value = appSettings.uiLanguage;
-  settingsCompletionSound.checked = appSettings.completionSoundEnabled;
+  syncCheckbox(settingsCompletionSound, appSettings.completionSoundEnabled);
   settingsMarkdownThemeCss.value = appSettings.markdownThemeCss;
   renderPromptSettingsList(promptTemplateSelect.value || promptSettings.defaultTemplateId);
   renderPromptSettingsEditor(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
-  promptSettingsModal.hidden = false;
-  if (activeSettingsSection === "prompts") {
-    settingsTemplateTitle.focus();
-    settingsTemplateTitle.select();
-  } else if (activeSettingsSection === "copy") {
-    includeImagePrompt.focus();
-  } else {
-    settingsUiLanguage.focus();
-  }
+  document.dispatchEvent(new CustomEvent("ui:settings-dialog-request", { detail: true }));
+  requestAnimationFrame(() => {
+    if (activeSettingsSection === "prompts") {
+      settingsTemplateTitle.focus();
+      settingsTemplateTitle.select();
+    } else if (activeSettingsSection === "copy") {
+      document.querySelector<HTMLButtonElement>("#include-image-prompt-control")?.focus();
+    } else {
+      settingsUiLanguage.focus();
+    }
+  });
 }
 
 function closePromptSettings() {
-  promptSettingsModal.hidden = true;
+  document.dispatchEvent(new CustomEvent("ui:settings-dialog-request", { detail: false }));
   (elementToRestoreFocus ?? promptSettingsButton).focus();
   elementToRestoreFocus = null;
 }
@@ -2708,14 +2407,7 @@ function resolvePromptTemplateId(templateId: string) {
 
 function showSettingsSection(section: "prompts" | "copy" | "display") {
   activeSettingsSection = section;
-  settingsPromptsSection.hidden = section !== "prompts";
-  settingsCopySection.hidden = section !== "copy";
-  settingsDisplaySection.hidden = section !== "display";
-  settingsTabs.forEach((tab) => {
-    const isActive = tab.dataset.settingsSection === section;
-    tab.classList.toggle("is-active", isActive);
-    tab.setAttribute("aria-selected", String(isActive));
-  });
+  document.dispatchEvent(new CustomEvent("ui:settings-section-request", { detail: section }));
 }
 
 function applyUiLanguage() {
@@ -2851,30 +2543,6 @@ function playCompletionTone(audioContext: AudioContext, startAt: number, frequen
   oscillator.stop(startAt + duration + 0.01);
 }
 
-function trapSettingsFocus(event: KeyboardEvent) {
-  const focusable = Array.from(
-    promptSettingsModal.querySelectorAll<HTMLElement>(
-      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
-    )
-  ).filter((element) => !element.closest("[hidden]"));
-
-  if (focusable.length === 0) {
-    return;
-  }
-
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  const active = document.activeElement;
-
-  if (event.shiftKey && active === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && active === last) {
-    event.preventDefault();
-    first.focus();
-  }
-}
-
 function t(key: keyof (typeof uiText)["ja"], value?: string | number) {
   const entry = uiText[appSettings.uiLanguage][key];
   if (typeof entry === "function") {
@@ -2940,7 +2608,12 @@ function renderPromptSettingsEditor(templateId: string) {
   settingsTemplateTitle.value = template.label;
   settingsTemplateDescription.value = template.description;
   settingsTemplateBody.value = template.instruction;
-  settingsTemplateDefault.checked = template.id === promptSettings.defaultTemplateId;
+  syncCheckbox(settingsTemplateDefault, template.id === promptSettings.defaultTemplateId);
+}
+
+function syncCheckbox(input: HTMLInputElement, checked: boolean) {
+  input.checked = checked;
+  document.dispatchEvent(new CustomEvent("ui:checkbox-request", { detail: { id: input.id, checked } }));
 }
 
 function loadPromptSettings(): PromptSettings {

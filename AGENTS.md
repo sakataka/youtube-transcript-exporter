@@ -21,7 +21,8 @@
 
 ## 実装メモ
 
-- フロントエンドは `src/main.ts` と `src/style.css`。
+- フロントエンドは `src/main.tsx`、`src/components/AppShell.tsx`、`src/style.css`。
+- UIは React、Tailwind CSS、shadcn/ui を使い、OSのライト・ダーク設定へ追従する。
 - ローカルWebサーバーは `server/src/local_web_server.rs`。
 - 字幕取得処理は `server/src/transcript.rs`。
 - コピー用プロンプト設定とUI言語設定は `localStorage` に保存する。
