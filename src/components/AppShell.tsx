@@ -88,7 +88,7 @@ export function AppShell() {
               aria-controls="transcript-search-panel"
             >
               <SearchIcon data-icon="inline-start" />
-              <span data-i18n="transcriptSearchToggle">検索</span>
+              <span data-i18n="transcriptSearchToggle">字幕内検索</span>
             </Button>
           </div>
           <div className="media-command-row">
