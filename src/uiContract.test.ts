@@ -40,4 +40,16 @@ describe("UI regression contract", () => {
     expect(styleSource).toContain("@media (max-width: 760px)");
     expect(styleSource).toContain("@media (prefers-reduced-motion: reduce)");
   });
+
+  test("keeps the LocalWeb-derived section structure and palette", () => {
+    for (const [index, label] of [["01", "INPUT"], ["02", "VIDEO INFO"], ["03", "OUTPUT"]]) {
+      expect(shellSource).toContain(`<SectionMarker index="${index}" label="${label}" />`);
+    }
+
+    for (const color of ["#fafafa", "#ffffff", "#e4e4e7", "#18181b", "#71717a", "#2f6fdb"]) {
+      expect(styleSource.toLowerCase()).toContain(color);
+    }
+    expect(styleSource.toLowerCase()).not.toContain("#0d7377");
+    expect(styleSource).not.toContain("linear-gradient");
+  });
 });

@@ -49,7 +49,7 @@ export function AppShell() {
 
   return (
     <section className="workspace">
-      <header className="app-header">
+      <header className="app-section app-header">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24">
@@ -62,6 +62,7 @@ export function AppShell() {
             <p data-i18n="heading">YouTube動画をAI向けに整理</p>
           </div>
         </div>
+        <SectionMarker index="01" label="INPUT" />
 
         <form className="input-panel" id="caption-form">
           <div className="command-row">
@@ -124,85 +125,91 @@ export function AppShell() {
       </header>
 
       <section className="result-layout" aria-live="polite">
-        <div className="meta-panel">
-          <div className="video-preview" id="video-preview" hidden>
-            <img id="video-thumbnail" alt="" loading="lazy" />
-            <div className="video-preview-body">
-              <span className="label" data-i18n="transcriptTitle">AI向け入力</span>
-              <strong id="video-preview-title">-</strong>
-            </div>
-          </div>
-          <MetaItem labelKey="selectedLanguage" label="選択言語" valueId="language" value="-" />
-          <MetaItem labelKey="characterCount" label="文字数" valueId="char-count" value="0" />
-          <MetaItem labelKey="videoDuration" label="動画時間" valueId="video-duration" value="-" />
-          <MetaItem labelKey="canonicalUrl" label="動画URL" valueId="canonical-url" value="-" />
-          <MetaItem labelKey="viewCount" label="再生数" valueId="view-count" value="-" />
-          <MetaItem labelKey="captionSourceLabel" label="字幕種別" valueId="caption-source" value="-" />
-          <div className="meta-prompt-settings">
-            <label className="label" htmlFor="prompt-template" data-i18n="copyPrompt">生成AIプロンプト</label>
-            <NativeSelect id="prompt-template" className="w-full" />
-            <p className="prompt-description" id="prompt-description" />
-          </div>
-        </div>
-
-        <div className="output-panel">
-          <h2 id="video-title" hidden>AI向け入力</h2>
-          <section className="caption-panel" id="caption-panel" hidden>
-            <div className="caption-panel-header">
-              <h3 data-i18n="captionsTitle">取得可能な字幕</h3>
-              <span id="caption-count">0件</span>
-            </div>
-            <div className="caption-list" id="caption-list" />
-          </section>
-          <section className="search-panel" id="transcript-search-panel" hidden>
-            <div className="search-header">
-              <h3 data-i18n="transcriptSearchTitle">字幕内検索</h3>
-              <span id="transcript-search-count" data-i18n="transcriptSearchDisabled">字幕取得後に検索できます。</span>
-            </div>
-            <label className="label" htmlFor="transcript-search" data-i18n="transcriptSearchLabel">検索語</label>
-            <Input id="transcript-search" type="search" autoComplete="off" disabled data-i18n-placeholder="transcriptSearchPlaceholder" />
-            <div className="search-results" id="transcript-search-results" />
-          </section>
-
-          <Tabs
-            value={outputMode}
-            onValueChange={(value) => {
-              if (!isOutputMode(value)) return;
-              setOutputMode(value);
-              document.dispatchEvent(new CustomEvent("ui:output-mode-change", { detail: value }));
-            }}
-            className="output-tabs-shell"
-          >
-          <div className="output-tabs">
-            <TabsList variant="line" aria-label="Output view" className="output-tabs-list">
-              <TabsTrigger className="output-tab" id="transcript-view-tab" value="transcript" data-output-mode="transcript" aria-controls="transcript-output" data-i18n="transcriptView">字幕本文</TabsTrigger>
-              <TabsTrigger className="output-tab" id="copy-prompt-view-tab" value="copyPrompt" data-output-mode="copyPrompt" aria-controls="transcript-output" data-i18n="copyPromptView">生成AIプロンプト</TabsTrigger>
-              <TabsTrigger className="output-tab" id="codex-answer-view-tab" value="codexAnswer" data-output-mode="codexAnswer" aria-controls="codex-answer-output" data-i18n="codexAnswerView">AI回答</TabsTrigger>
-            </TabsList>
-            <span className="output-tab-divider" aria-hidden="true" />
-            <div className="codex-toolbar" id="codex-toolbar" hidden>
-              <ToolbarButton id="copy-codex-answer" i18n="copyAnswer">回答をコピー</ToolbarButton>
-              <ToolbarButton id="save-codex-markdown" i18n="saveMarkdown" hidden>Markdown保存</ToolbarButton>
-              <ToolbarButton id="rerun-codex-answer" i18n="rerunAnswer">再実行</ToolbarButton>
-              <ToolbarButton id="follow-up-codex-answer" i18n="followUpAnswer">追加質問</ToolbarButton>
-              <ToolbarButton id="ask-selection-codex" i18n="askSelection">選択範囲で質問</ToolbarButton>
-              <Button id="cancel-codex-answer" type="button" variant="destructive" size="sm" data-i18n="cancelCodex" hidden>キャンセル</Button>
-            </div>
-          </div>
-          </Tabs>
-          <Textarea id="transcript-output" spellCheck="false" readOnly />
-          <div id="codex-answer-output" className="markdown-output" hidden />
-          <section className="history-panel" id="codex-history-panel" hidden>
-            <div className="history-header">
-              <h3 data-i18n="codexHistoryTitle">AI回答履歴</h3>
-              <div className="history-header-actions">
-                <span id="codex-history-count">0</span>
-                <ToolbarButton id="clear-codex-history" i18n="clearCodexHistory">履歴をクリア</ToolbarButton>
+        <section className="app-section info-section">
+          <SectionMarker index="02" label="VIDEO INFO" />
+          <div className="meta-panel">
+            <div className="video-preview" id="video-preview" hidden>
+              <img id="video-thumbnail" alt="" loading="lazy" />
+              <div className="video-preview-body">
+                <span className="label" data-i18n="transcriptTitle">AI向け入力</span>
+                <strong id="video-preview-title">-</strong>
               </div>
             </div>
-            <div className="history-list" id="codex-history-list" />
-          </section>
-        </div>
+            <MetaItem labelKey="selectedLanguage" label="選択言語" valueId="language" value="-" />
+            <MetaItem labelKey="characterCount" label="文字数" valueId="char-count" value="0" />
+            <MetaItem labelKey="videoDuration" label="動画時間" valueId="video-duration" value="-" />
+            <MetaItem labelKey="canonicalUrl" label="動画URL" valueId="canonical-url" value="-" />
+            <MetaItem labelKey="viewCount" label="再生数" valueId="view-count" value="-" />
+            <MetaItem labelKey="captionSourceLabel" label="字幕種別" valueId="caption-source" value="-" />
+            <div className="meta-prompt-settings">
+              <label className="label" htmlFor="prompt-template" data-i18n="copyPrompt">生成AIプロンプト</label>
+              <NativeSelect id="prompt-template" className="w-full" />
+              <p className="prompt-description" id="prompt-description" />
+            </div>
+          </div>
+        </section>
+
+        <section className="app-section output-section">
+          <SectionMarker index="03" label="OUTPUT" />
+          <div className="output-panel">
+            <h2 id="video-title" hidden>AI向け入力</h2>
+            <section className="caption-panel" id="caption-panel" hidden>
+              <div className="caption-panel-header">
+                <h3 data-i18n="captionsTitle">取得可能な字幕</h3>
+                <span id="caption-count">0件</span>
+              </div>
+              <div className="caption-list" id="caption-list" />
+            </section>
+            <section className="search-panel" id="transcript-search-panel" hidden>
+              <div className="search-header">
+                <h3 data-i18n="transcriptSearchTitle">字幕内検索</h3>
+                <span id="transcript-search-count" data-i18n="transcriptSearchDisabled">字幕取得後に検索できます。</span>
+              </div>
+              <label className="label" htmlFor="transcript-search" data-i18n="transcriptSearchLabel">検索語</label>
+              <Input id="transcript-search" type="search" autoComplete="off" disabled data-i18n-placeholder="transcriptSearchPlaceholder" />
+              <div className="search-results" id="transcript-search-results" />
+            </section>
+
+            <Tabs
+              value={outputMode}
+              onValueChange={(value) => {
+                if (!isOutputMode(value)) return;
+                setOutputMode(value);
+                document.dispatchEvent(new CustomEvent("ui:output-mode-change", { detail: value }));
+              }}
+              className="output-tabs-shell"
+            >
+              <div className="output-tabs">
+                <TabsList variant="line" aria-label="Output view" className="output-tabs-list">
+                  <TabsTrigger className="output-tab" id="transcript-view-tab" value="transcript" data-output-mode="transcript" aria-controls="transcript-output" data-i18n="transcriptView">字幕本文</TabsTrigger>
+                  <TabsTrigger className="output-tab" id="copy-prompt-view-tab" value="copyPrompt" data-output-mode="copyPrompt" aria-controls="transcript-output" data-i18n="copyPromptView">生成AIプロンプト</TabsTrigger>
+                  <TabsTrigger className="output-tab" id="codex-answer-view-tab" value="codexAnswer" data-output-mode="codexAnswer" aria-controls="codex-answer-output" data-i18n="codexAnswerView">AI回答</TabsTrigger>
+                </TabsList>
+                <span className="output-tab-divider" aria-hidden="true" />
+                <div className="codex-toolbar" id="codex-toolbar" hidden>
+                  <ToolbarButton id="copy-codex-answer" i18n="copyAnswer">回答をコピー</ToolbarButton>
+                  <ToolbarButton id="save-codex-markdown" i18n="saveMarkdown" hidden>Markdown保存</ToolbarButton>
+                  <ToolbarButton id="rerun-codex-answer" i18n="rerunAnswer">再実行</ToolbarButton>
+                  <ToolbarButton id="follow-up-codex-answer" i18n="followUpAnswer">追加質問</ToolbarButton>
+                  <ToolbarButton id="ask-selection-codex" i18n="askSelection">選択範囲で質問</ToolbarButton>
+                  <Button id="cancel-codex-answer" type="button" variant="destructive" size="sm" data-i18n="cancelCodex" hidden>キャンセル</Button>
+                </div>
+              </div>
+            </Tabs>
+            <Textarea id="transcript-output" spellCheck="false" readOnly />
+            <div id="codex-answer-output" className="markdown-output" hidden />
+            <section className="history-panel" id="codex-history-panel" hidden>
+              <div className="history-header">
+                <h3 data-i18n="codexHistoryTitle">AI回答履歴</h3>
+                <div className="history-header-actions">
+                  <span id="codex-history-count">0</span>
+                  <ToolbarButton id="clear-codex-history" i18n="clearCodexHistory">履歴をクリア</ToolbarButton>
+                </div>
+              </div>
+              <div className="history-list" id="codex-history-list" />
+            </section>
+          </div>
+        </section>
       </section>
 
       <PersistentDialog
@@ -318,6 +325,16 @@ export function AppShell() {
         </section>
       </PersistentDialog>
     </section>
+  );
+}
+
+function SectionMarker({ index, label }: { index: string; label: string }) {
+  return (
+    <div className="section-marker" aria-hidden="true">
+      <span className="section-number">{index}</span>
+      <span className="section-name">{label}</span>
+      <span className="section-line" />
+    </div>
   );
 }
 
