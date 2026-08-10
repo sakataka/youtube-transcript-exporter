@@ -21,7 +21,7 @@
 
 ## 実装メモ
 
-- フロントエンドは `src/main.tsx`、`src/components/AppShell.tsx`、`src/style.css`。
+- フロントエンドは `src/main.tsx` と `src/style.css`。`main.tsx` がReactの状態・イベント・画面構造を一元管理し、文字列変換などの純粋処理は同階層の専用モジュールに置く。
 - UIは React、Tailwind CSS、shadcn/ui を使い、OSのライト・ダーク設定へ追従する。
 - ローカルWebサーバーは `server/src/local_web_server.rs`。
 - 字幕取得処理は `server/src/transcript.rs`。

@@ -282,11 +282,18 @@ pub async fn transcribe_media(path: &str) -> Result<TranscriptResult, Transcript
             502,
         )
     })?;
-    let output = run_kanary_with_timeout(
+    let output = run_command_with_timeout(
         Command::new(kanary)
             .arg("transcribe")
             .arg(media_path.as_os_str()),
         KANARY_TIMEOUT,
+        "kanary",
+        CommandFailureMessages {
+            create_output: "Kanaryの一時出力を作成できませんでした。",
+            spawn: "Kanaryを実行できませんでした。",
+            timeout: "Kanaryの文字起こしがタイムアウトしました。",
+            wait: "Kanaryの終了状態を確認できませんでした。",
+        },
     )?;
 
     if !output.status.success() {
@@ -513,7 +520,7 @@ async fn get_ytdlp_info(url: &str) -> Result<YtDlpInfo, TranscriptError> {
         )
     })?;
 
-    let output = run_ytdlp_with_timeout(
+    let output = run_command_with_timeout(
         Command::new(ytdlp).args([
             "--dump-single-json",
             "--skip-download",
@@ -529,6 +536,13 @@ async fn get_ytdlp_info(url: &str) -> Result<YtDlpInfo, TranscriptError> {
             url,
         ]),
         YTDLP_TIMEOUT,
+        "ytdlp",
+        CommandFailureMessages {
+            create_output: "yt-dlpの一時出力を作成できませんでした。",
+            spawn: "yt-dlpを実行できませんでした。",
+            timeout: "字幕情報の取得がタイムアウトしました。しばらくしてから再試行してください。",
+            wait: "yt-dlpの終了状態を確認できませんでした。",
+        },
     )?;
 
     if !output.status.success() {
@@ -816,23 +830,33 @@ struct CommandOutput {
     stderr: Vec<u8>,
 }
 
-fn run_ytdlp_with_timeout(
+#[derive(Clone, Copy)]
+struct CommandFailureMessages {
+    create_output: &'static str,
+    spawn: &'static str,
+    timeout: &'static str,
+    wait: &'static str,
+}
+
+fn run_command_with_timeout(
     command: &mut Command,
     timeout: Duration,
+    temp_label: &str,
+    messages: CommandFailureMessages,
 ) -> Result<CommandOutput, TranscriptError> {
-    let output_base = temp_output_base();
+    let output_base = temp_output_base_with_label(temp_label);
     let stdout_path = output_base.with_extension("stdout");
     let stderr_path = output_base.with_extension("stderr");
     let stdout_file = fs::File::create(&stdout_path)
-        .map_err(|_| TranscriptError::new("yt-dlpの一時出力を作成できませんでした。", 502))?;
+        .map_err(|_| TranscriptError::new(messages.create_output, 502))?;
     let stderr_file = fs::File::create(&stderr_path)
-        .map_err(|_| TranscriptError::new("yt-dlpの一時出力を作成できませんでした。", 502))?;
+        .map_err(|_| TranscriptError::new(messages.create_output, 502))?;
 
     let mut child = command
         .stdout(Stdio::from(stdout_file))
         .stderr(Stdio::from(stderr_file))
         .spawn()
-        .map_err(|_| TranscriptError::new("yt-dlpを実行できませんでした。", 502))?;
+        .map_err(|_| TranscriptError::new(messages.spawn, 502))?;
     let started_at = std::time::Instant::now();
 
     let status = loop {
@@ -842,18 +866,12 @@ fn run_ytdlp_with_timeout(
                 let _ = child.kill();
                 let _ = child.wait();
                 cleanup_temp_output(&stdout_path, &stderr_path);
-                return Err(TranscriptError::new(
-                    "字幕情報の取得がタイムアウトしました。しばらくしてから再試行してください。",
-                    504,
-                ));
+                return Err(TranscriptError::new(messages.timeout, 504));
             }
             Ok(None) => thread::sleep(Duration::from_millis(100)),
             Err(_) => {
                 cleanup_temp_output(&stdout_path, &stderr_path);
-                return Err(TranscriptError::new(
-                    "yt-dlpの終了状態を確認できませんでした。",
-                    502,
-                ));
+                return Err(TranscriptError::new(messages.wait, 502));
             }
         }
     };
@@ -867,10 +885,6 @@ fn run_ytdlp_with_timeout(
         stdout,
         stderr,
     })
-}
-
-fn temp_output_base() -> PathBuf {
-    temp_output_base_with_label("ytdlp")
 }
 
 fn temp_output_base_with_label(label: &str) -> PathBuf {
@@ -1220,59 +1234,6 @@ fn extract_kanary_text_from_value(value: &serde_json::Value) -> Option<String> {
             .find_map(extract_kanary_text_from_value),
         _ => None,
     }
-}
-
-fn run_kanary_with_timeout(
-    command: &mut Command,
-    timeout: Duration,
-) -> Result<CommandOutput, TranscriptError> {
-    let output_base = temp_output_base_with_label("kanary");
-    let stdout_path = output_base.with_extension("stdout");
-    let stderr_path = output_base.with_extension("stderr");
-    let stdout_file = fs::File::create(&stdout_path)
-        .map_err(|_| TranscriptError::new("Kanaryの一時出力を作成できませんでした。", 502))?;
-    let stderr_file = fs::File::create(&stderr_path)
-        .map_err(|_| TranscriptError::new("Kanaryの一時出力を作成できませんでした。", 502))?;
-
-    let mut child = command
-        .stdout(Stdio::from(stdout_file))
-        .stderr(Stdio::from(stderr_file))
-        .spawn()
-        .map_err(|_| TranscriptError::new("Kanaryを実行できませんでした。", 502))?;
-    let started_at = std::time::Instant::now();
-
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if started_at.elapsed() >= timeout => {
-                let _ = child.kill();
-                let _ = child.wait();
-                cleanup_temp_output(&stdout_path, &stderr_path);
-                return Err(TranscriptError::new(
-                    "Kanaryの文字起こしがタイムアウトしました。",
-                    504,
-                ));
-            }
-            Ok(None) => thread::sleep(Duration::from_millis(100)),
-            Err(_) => {
-                cleanup_temp_output(&stdout_path, &stderr_path);
-                return Err(TranscriptError::new(
-                    "Kanaryの終了状態を確認できませんでした。",
-                    502,
-                ));
-            }
-        }
-    };
-
-    let stdout = fs::read(&stdout_path).unwrap_or_default();
-    let stderr = fs::read(&stderr_path).unwrap_or_default();
-    cleanup_temp_output(&stdout_path, &stderr_path);
-
-    Ok(CommandOutput {
-        status,
-        stdout,
-        stderr,
-    })
 }
 
 fn find_ytdlp_path() -> Option<PathBuf> {

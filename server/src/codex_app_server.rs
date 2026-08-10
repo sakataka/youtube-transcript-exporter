@@ -61,11 +61,6 @@ struct AgentMessageText {
     text: String,
 }
 
-#[allow(dead_code)]
-pub fn ask(prompt: &str, generate_image: bool) -> Result<String, CodexAppServerError> {
-    ask_with_control(prompt, generate_image, CodexRunControl::default())
-}
-
 pub fn ask_with_control(
     prompt: &str,
     generate_image: bool,

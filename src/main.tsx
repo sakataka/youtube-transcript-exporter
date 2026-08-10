@@ -1,13 +1,24 @@
 import "./style.css";
 import "./theme";
-import { flushSync } from "react-dom";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { RotateCwIcon, SearchIcon, SettingsIcon } from "lucide-react";
 
-import { AppShell } from "./components/AppShell";
-import { CaptionOptions, HistoryList, SearchResults } from "./components/DynamicUi";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { invokeBackend } from "./backendClient";
 import { getCodexAnswerTextForCopy, normalizeCodexAnswerMarkdown } from "./codexAnswerText";
-import { escapeHtml, renderMarkdown as renderMarkdownOutput } from "./markdownRenderer";
+import { renderMarkdown as renderMarkdownOutput } from "./markdownRenderer";
 import {
   buildAnalysisPrompt as buildAnalysisPromptText,
   buildFollowUpPrompt as buildFollowUpPromptText
@@ -34,7 +45,6 @@ import type {
   PromptSettings,
   PromptTemplate,
   StoredAppSettings,
-  TimedTranscriptSegment,
   TranscriptDisplayMode,
   TranscriptSuccess
 } from "./types";
@@ -42,11 +52,6 @@ import type {
 type DebugLogReadResult = {
   path: string;
   content: string;
-};
-
-type SearchableTranscriptEntry = {
-  segment: TimedTranscriptSegment;
-  normalizedText: string;
 };
 
 const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1";
@@ -133,21 +138,13 @@ const defaultPromptTemplates: PromptTemplate[] = [
   }
 ];
 
-let promptSettings = loadPromptSettings();
-let appSettings = loadAppSettings();
-let activeSettingsSection: "prompts" | "copy" | "display" = "prompts";
-
 const uiText = {
   ja: {
-    eyebrow: "YouTube to AI prompt tool",
     heading: "YouTube動画をAI向けに整理",
-    urlLabel: "YouTube URL",
     mediaPathLabel: "ローカル動画ファイル",
     mediaPathPlaceholder: "/Users/you/Movies/video.mp4",
     transcribeMedia: "動画を文字起こし",
     transcribeMediaLoading: "文字起こし中",
-    hint: "自動翻訳字幕は除外し、動画に紐づく字幕・自動字幕のみ表示します。",
-    videoId: "動画ID",
     selectedLanguage: "選択言語",
     characterCount: "文字数",
     videoDuration: "動画時間",
@@ -156,7 +153,6 @@ const uiText = {
     viewCount: "再生数",
     captionSourceLabel: "字幕種別",
     copyPrompt: "生成AIプロンプト",
-    copyOptions: "コピー設定",
     includeImagePrompt: "画像生成指示を含む",
     formatAutomaticTranscript: "自動字幕を整形",
     transcriptDisplayModeLabel: "字幕表示のタイムスタンプ",
@@ -176,19 +172,15 @@ const uiText = {
     openTimestamp: "YouTubeで開く",
     reloadButton: "更新",
     settingsButton: "設定",
-    fetchTranscript: "字幕を取得",
     fetchTranscriptLoading: "取得中",
-    copy: "コピー",
     askCodex: "AIに聞く",
     askCodexLoading: "取得・質問中",
-    codexWorking: "Codexが回答を生成しています",
     codexHistoryTitle: "AI回答履歴",
     codexHistoryEmpty: "AI回答の履歴はまだありません。",
     codexHistoryRestored: "履歴からAI回答を復元しました。",
     clearCodexHistory: "履歴をクリア",
     codexHistoryCleared: "AI回答履歴を削除しました。",
     copyAnswer: "回答をコピー",
-    saveMarkdown: "Markdown保存",
     rerunAnswer: "再実行",
     followUpAnswer: "追加質問",
     askSelection: "選択範囲で質問",
@@ -205,7 +197,6 @@ const uiText = {
     followUpRequired: "追加質問を入力してください。",
     historyRestoredPrefix: "履歴",
     transcriptTitle: "AI向け入力",
-    initialMessage: "URLを入力して字幕候補を確認してください。",
     captionsTitle: "取得可能な字幕",
     settingsEyebrow: "Settings",
     settingsTitle: "設定",
@@ -251,23 +242,19 @@ const uiText = {
     fetchingCaptions: "字幕候補を確認しています。",
     fetchingTranscript: "選択した字幕を取得しています。",
     fetchTranscriptFailed: "取得に失敗しました。",
-    transcriptCopyFailed: "取得しましたが、クリップボードにコピーできませんでした。コピーボタンを押すか、本文を選択して手動でコピーしてください。",
     copyFailed: "クリップボードにコピーできませんでした。本文を選択して手動でコピーしてください。",
     codexPromptRequired: "字幕を取得してから生成AIに質問してください。",
     askingCodex: "",
-    codexAnswerReady: "Codexの回答を取得しました。",
     codexAnswerFailed: "Codexから回答を取得できませんでした。",
     promptChanged: "プロンプトを変更しました。コピーするとこの形式でクリップボードに入ります。",
     copyOptionsChanged: "コピー設定を変更しました。表示とコピー内容に反映しました。",
     settingsReset: "プロンプト設定を初期状態に戻しました。",
     settingsSaved: "プロンプト設定を保存しました。",
-    languageSaved: "UI言語を保存しました。",
     displaySaved: "表示設定を保存しました。",
     newPrompt: "新しいプロンプト",
     newPromptDescription: "説明を入力してください",
     newPromptInstruction: "以下はYouTube動画の字幕です。内容を日本語で整理してください。",
     untitledPrompt: "無題のプロンプト",
-    copiedWithPrompt: (label: string) => `取得しました。「${label}」プロンプト付きでクリップボードにコピーしました。`,
     defaultMark: " / デフォルト",
     manualCaption: "字幕",
     automaticCaption: "自動字幕",
@@ -275,15 +262,11 @@ const uiText = {
     captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`
   },
   en: {
-    eyebrow: "YouTube to AI prompt tool",
     heading: "Prepare YouTube Videos for AI",
-    urlLabel: "YouTube URL",
     mediaPathLabel: "Local video file",
     mediaPathPlaceholder: "/Users/you/Movies/video.mp4",
     transcribeMedia: "Transcribe video",
     transcribeMediaLoading: "Transcribing",
-    hint: "Shows only captions and auto captions attached to the video, excluding auto-translated captions.",
-    videoId: "Video ID",
     selectedLanguage: "Selected language",
     characterCount: "Characters",
     videoDuration: "Duration",
@@ -292,7 +275,6 @@ const uiText = {
     viewCount: "Views",
     captionSourceLabel: "Caption type",
     copyPrompt: "Generative AI prompt",
-    copyOptions: "Copy settings",
     includeImagePrompt: "Include image prompt",
     formatAutomaticTranscript: "Clean auto captions",
     transcriptDisplayModeLabel: "Transcript timestamps",
@@ -312,19 +294,15 @@ const uiText = {
     openTimestamp: "Open in YouTube",
     reloadButton: "Reload",
     settingsButton: "Settings",
-    fetchTranscript: "Fetch",
     fetchTranscriptLoading: "Getting",
-    copy: "Copy",
     askCodex: "Ask AI",
     askCodexLoading: "Getting and asking",
-    codexWorking: "Codex is generating an answer",
     codexHistoryTitle: "AI answer history",
     codexHistoryEmpty: "No AI answer history yet.",
     codexHistoryRestored: "Restored an AI answer from history.",
     clearCodexHistory: "Clear history",
     codexHistoryCleared: "Cleared AI answer history.",
     copyAnswer: "Copy answer",
-    saveMarkdown: "Save Markdown",
     rerunAnswer: "Rerun",
     followUpAnswer: "Follow up",
     askSelection: "Ask about selection",
@@ -341,7 +319,6 @@ const uiText = {
     followUpRequired: "Enter a follow-up question.",
     historyRestoredPrefix: "History",
     transcriptTitle: "AI-ready input",
-    initialMessage: "Enter a URL to check available captions.",
     captionsTitle: "Available captions",
     settingsEyebrow: "Settings",
     settingsTitle: "Settings",
@@ -387,23 +364,19 @@ const uiText = {
     fetchingCaptions: "Checking caption candidates.",
     fetchingTranscript: "Getting the selected caption.",
     fetchTranscriptFailed: "Failed to fetch the transcript.",
-    transcriptCopyFailed: "Fetched the transcript, but could not copy it to the clipboard. Press Copy or select the text manually.",
     copyFailed: "Could not copy to the clipboard. Select the text and copy it manually.",
     codexPromptRequired: "Fetch a transcript before asking AI.",
     askingCodex: "",
-    codexAnswerReady: "Codex answer is ready.",
     codexAnswerFailed: "Could not get a Codex answer.",
     promptChanged: "Prompt changed. Copy will use this format.",
     copyOptionsChanged: "Copy settings updated. Display and copied text now use them.",
     settingsReset: "Prompt settings were reset to defaults.",
     settingsSaved: "Prompt settings saved.",
-    languageSaved: "UI language saved.",
     displaySaved: "Display settings saved.",
     newPrompt: "New prompt",
     newPromptDescription: "Enter a description",
     newPromptInstruction: "The following is a YouTube video transcript. Please organize the content clearly.",
     untitledPrompt: "Untitled prompt",
-    copiedWithPrompt: (label: string) => `Copied with the "${label}" prompt.`,
     defaultMark: " / Default",
     manualCaption: "Caption",
     automaticCaption: "Auto caption",
@@ -412,891 +385,1051 @@ const uiText = {
   }
 };
 
-const app = document.querySelector<HTMLDivElement>("#app");
-
-if (!app) {
-  throw new Error("App root was not found.");
-}
-flushSync(() => {
-  createRoot(app).render(<AppShell />);
-});
-
-const form = document.querySelector<HTMLFormElement>("#caption-form")!;
-const urlInput = document.querySelector<HTMLInputElement>("#youtube-url")!;
-const mediaPathInput = document.querySelector<HTMLInputElement>("#local-media-path")!;
-const askCodexButton = document.querySelector<HTMLButtonElement>("#ask-codex-button")!;
-const askCodexButtonLabel = document.querySelector<HTMLElement>("#ask-codex-button-label")!;
-const transcribeMediaButton = document.querySelector<HTMLButtonElement>("#transcribe-media-button")!;
-const transcribeMediaButtonLabel = document.querySelector<HTMLElement>("#transcribe-media-button-label")!;
-const promptTemplateSelect = document.querySelector<HTMLSelectElement>("#prompt-template")!;
-const promptDescription = document.querySelector<HTMLParagraphElement>("#prompt-description")!;
-const reloadAppButton = document.querySelector<HTMLButtonElement>("#reload-app-button")!;
-const promptSettingsButton = document.querySelector<HTMLButtonElement>("#prompt-settings-button")!;
-const includeImagePrompt = document.querySelector<HTMLInputElement>("#include-image-prompt")!;
-const formatAutomaticTranscript = document.querySelector<HTMLInputElement>("#format-automatic-transcript")!;
-const promptSettingsModal = document.querySelector<HTMLElement>("#prompt-settings-modal")!;
-const promptSettingsClose = document.querySelector<HTMLButtonElement>("#prompt-settings-close")!;
-const settingsTemplateSelect = document.querySelector<HTMLSelectElement>("#settings-template-select")!;
-const settingsTemplateTitle = document.querySelector<HTMLInputElement>("#settings-template-title")!;
-const settingsTemplateDescription = document.querySelector<HTMLInputElement>(
-  "#settings-template-description"
-)!;
-const settingsTemplateBody = document.querySelector<HTMLTextAreaElement>("#settings-template-body")!;
-const settingsTemplateDefault = document.querySelector<HTMLInputElement>("#settings-template-default")!;
-const settingsAddTemplate = document.querySelector<HTMLButtonElement>("#settings-add-template")!;
-const settingsDeleteTemplate = document.querySelector<HTMLButtonElement>("#settings-delete-template")!;
-const settingsResetTemplate = document.querySelector<HTMLButtonElement>("#settings-reset-template")!;
-const settingsSaveTemplate = document.querySelector<HTMLButtonElement>("#settings-save-template")!;
-const settingsUiLanguage = document.querySelector<HTMLSelectElement>("#settings-ui-language")!;
-const settingsCompletionSound = document.querySelector<HTMLInputElement>("#settings-completion-sound")!;
-const settingsOpenDebugLog = document.querySelector<HTMLButtonElement>("#settings-open-debug-log")!;
-const settingsDebugLogViewer = document.querySelector<HTMLDivElement>("#settings-debug-log-viewer")!;
-const settingsDebugLogPath = document.querySelector<HTMLElement>("#settings-debug-log-path")!;
-const settingsDebugLogContent = document.querySelector<HTMLTextAreaElement>("#settings-debug-log-content")!;
-const settingsSaveDisplay = document.querySelector<HTMLButtonElement>("#settings-save-display")!;
-const captionPanel = document.querySelector<HTMLElement>("#caption-panel")!;
-const captionList = document.querySelector<HTMLDivElement>("#caption-list")!;
-const captionCount = document.querySelector<HTMLElement>("#caption-count")!;
-const output = document.querySelector<HTMLTextAreaElement>("#transcript-output")!;
-const codexAnswerOutput = document.querySelector<HTMLDivElement>("#codex-answer-output")!;
-const message = document.querySelector<HTMLElement>("#message")!;
-const title = document.querySelector<HTMLHeadingElement>("#video-title")!;
-const language = document.querySelector<HTMLElement>("#language")!;
-const charCount = document.querySelector<HTMLElement>("#char-count")!;
-const videoDuration = document.querySelector<HTMLElement>("#video-duration")!;
-const canonicalUrl = document.querySelector<HTMLElement>("#canonical-url")!;
-const viewCount = document.querySelector<HTMLElement>("#view-count")!;
-const captionSource = document.querySelector<HTMLElement>("#caption-source")!;
-const transcriptDisplayModeInputs = Array.from(
-  document.querySelectorAll<HTMLInputElement>('input[name="transcript-display-mode"]')
-);
-const transcriptSearchPanel = document.querySelector<HTMLElement>("#transcript-search-panel")!;
-const transcriptSearchToggle = document.querySelector<HTMLButtonElement>("#transcript-search-toggle")!;
-const transcriptSearchInput = document.querySelector<HTMLInputElement>("#transcript-search")!;
-const transcriptSearchCount = document.querySelector<HTMLElement>("#transcript-search-count")!;
-const transcriptSearchResults = document.querySelector<HTMLDivElement>("#transcript-search-results")!;
-const outputTabDivider = document.querySelector<HTMLSpanElement>(".output-tab-divider")!;
-const codexToolbar = document.querySelector<HTMLDivElement>("#codex-toolbar")!;
-const copyCodexAnswerButton = document.querySelector<HTMLButtonElement>("#copy-codex-answer")!;
-const saveCodexMarkdownButton = document.querySelector<HTMLButtonElement>("#save-codex-markdown")!;
-const rerunCodexAnswerButton = document.querySelector<HTMLButtonElement>("#rerun-codex-answer")!;
-const followUpCodexAnswerButton = document.querySelector<HTMLButtonElement>("#follow-up-codex-answer")!;
-const askSelectionCodexButton = document.querySelector<HTMLButtonElement>("#ask-selection-codex")!;
-const cancelCodexAnswerButton = document.querySelector<HTMLButtonElement>("#cancel-codex-answer")!;
-const codexHistoryPanel = document.querySelector<HTMLElement>("#codex-history-panel")!;
-const codexHistoryList = document.querySelector<HTMLDivElement>("#codex-history-list")!;
-const codexHistoryCount = document.querySelector<HTMLElement>("#codex-history-count")!;
-const clearCodexHistoryButton = document.querySelector<HTMLButtonElement>("#clear-codex-history")!;
-const videoPreview = document.querySelector<HTMLDivElement>("#video-preview")!;
-const videoThumbnail = document.querySelector<HTMLImageElement>("#video-thumbnail")!;
-const videoPreviewTitle = document.querySelector<HTMLElement>("#video-preview-title")!;
-const followUpModal = document.querySelector<HTMLElement>("#follow-up-modal")!;
-const followUpQuestion = document.querySelector<HTMLTextAreaElement>("#follow-up-question")!;
-const followUpClose = document.querySelector<HTMLButtonElement>("#follow-up-close")!;
-const followUpSubmit = document.querySelector<HTMLButtonElement>("#follow-up-submit")!;
-const captionListRoot = createRoot(captionList);
-const transcriptSearchResultsRoot = createRoot(transcriptSearchResults);
-const codexHistoryListRoot = createRoot(codexHistoryList);
-
-let latestCaptionList: CaptionListSuccess | null = null;
-let selectedCaption: CaptionOption | null = null;
-let latestTranscript: TranscriptSuccess | null = null;
-let latestCodexAnswer = "";
-let latestCodexQuestionKind: CodexQuestionKind = "initial";
-let latestCodexQuestionText = "";
-let latestCodexSelectedExcerpt = "";
-let latestCodexAnswerContext: CodexAnswerContext | null = null;
-let pendingCodexRequest: PendingCodexRequest | null = null;
-let captionRequestToken = 0;
-let transcriptRequestToken = 0;
-let codexRequestToken = 0;
-let captionAutoCheckTimer: number | undefined;
-let lastCaptionCheckUrl = "";
-let mediaTranscriptRequestToken = 0;
-let isStartingCodexRequest = false;
-let codexPollTimer: number | undefined;
-let codexHistory = loadCodexHistory();
-let outputMode: CodexOutputMode = "transcript";
-let isTranscriptSearchExpanded = false;
-let latestSelectedOutputText = "";
-let completionAudioContext: AudioContext | null = null;
-let completionAudioPrimed = false;
-let elementToRestoreFocus: HTMLElement | null = null;
-let followUpContext: { kind: CodexQuestionKind; selectedExcerpt: string } | null = null;
-let transcriptDerivedCache: {
-  transcript: TranscriptSuccess;
-  formatAutomaticTranscript: boolean;
-  transcriptDisplayMode: TranscriptDisplayMode;
-  displayText?: string;
-  searchableSegments?: TimedTranscriptSegment[];
-  searchableIndex?: SearchableTranscriptEntry[];
-} | null = null;
-let codexMarkdownCache: { markdown: string; timestampBaseUrl: string; html: string } | null = null;
-
-clearUrlInputOnLaunch();
-renderPromptTemplates();
-renderAppOptions();
-renderTranscriptDisplayMode();
-renderTranscriptSearch();
-renderCodexControls();
-renderCodexHistory();
-applyUiLanguage();
-focusUrlInput();
-window.addEventListener("load", focusUrlInput);
-window.addEventListener("resize", resizeTextOutput);
-window.addEventListener("pointerdown", primeCompletionAudio, { capture: true });
-window.addEventListener("keydown", primeCompletionAudio, { capture: true });
-
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const url = urlInput.value.trim();
-
-  if (!url) {
-    showError(t("urlRequired"));
-    return;
-  }
-
-  await checkCaptionCandidates(url);
-});
-
-transcribeMediaButton.addEventListener("click", async () => {
-  await transcribeLocalMedia();
-});
-
-mediaPathInput.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") {
-    return;
-  }
-
-  event.preventDefault();
-  void transcribeLocalMedia();
-});
-
-urlInput.addEventListener("input", scheduleCaptionAutoCheck);
-
-urlInput.addEventListener("paste", () => {
-  requestAnimationFrame(scheduleCaptionAutoCheck);
-});
-
-captionList.addEventListener("change", (event) => {
-  const target = event.target;
-
-  if (!(target instanceof HTMLInputElement) || target.name !== "caption-option") {
-    return;
-  }
-
-  selectedCaption = latestCaptionList?.captions[Number(target.value)] ?? null;
-  transcriptRequestToken += 1;
-  clearTranscript();
-  askCodexButton.disabled = !selectedCaption;
-  updateSelectedLanguage();
-  updateCaptionSource();
-  if (selectedCaption) {
-    void fetchSelectedTranscript({ copyAfterFetch: false });
-  }
-});
-
-askCodexButton.addEventListener("click", async () => {
-  const transcript = latestTranscript ?? (await fetchSelectedTranscript({ copyAfterFetch: false }));
-  if (!transcript) {
-    showError(t("codexPromptRequired"));
-    return;
-  }
-
-  await askCodexWithTranscript(transcript);
-});
-
-async function askCodexWithTranscript(transcript: TranscriptSuccess) {
-  const template = getSelectedPromptTemplate();
-  const prompt = buildAnalysisPrompt(transcript, template, {
-    includeImageInstruction: false
-  });
-  appendDebugLog("frontend.codex_prompt.built", {
-    templateId: template.id,
-    generateImage: appSettings.includeImagePrompt,
-    promptChars: prompt.length,
-    promptPreview: truncateForLog(prompt, 8000)
-  });
-  await startCodexRequest(prompt, {
-    questionKind: "initial",
-    questionText: template.label,
-    selectedExcerpt: "",
-    templateId: template.id,
-    generateImage: appSettings.includeImagePrompt,
-    answerContext: getTranscriptAnswerContext(transcript)
-  });
-}
-
-copyCodexAnswerButton.addEventListener("click", async () => {
-  await copyLatestCodexAnswer();
-});
-
-saveCodexMarkdownButton.addEventListener("click", () => {
-  saveLatestCodexAnswerAsMarkdown();
-});
-
-rerunCodexAnswerButton.addEventListener("click", async () => {
-  await rerunLatestCodexRequest();
-});
-
-followUpCodexAnswerButton.addEventListener("click", () => {
-  openFollowUpModal("followup", "");
-});
-
-askSelectionCodexButton.addEventListener("click", () => {
-  const selectedExcerpt = getSelectedOutputText();
-  if (!selectedExcerpt) {
-    showMessage(t("codexNoSelection"), true);
-    return;
-  }
-  openFollowUpModal("selection", selectedExcerpt);
-});
-
-cancelCodexAnswerButton.addEventListener("click", async () => {
-  await cancelActiveCodexRequest();
-});
-
-promptTemplateSelect.addEventListener("change", () => {
-  updatePromptDescription();
-  renderOutput();
-
-  if (!latestTranscript) {
-    return;
-  }
-
-  showMessage(t("promptChanged"));
-});
-
-includeImagePrompt.addEventListener("change", () => {
-  appSettings.includeImagePrompt = includeImagePrompt.checked;
-  saveAppSettings();
-  renderOutput();
-  updateTranscriptCharacterCount();
-  showMessage(t("copyOptionsChanged"));
-});
-
-formatAutomaticTranscript.addEventListener("change", () => {
-  appSettings.formatAutomaticTranscript = formatAutomaticTranscript.checked;
-  saveAppSettings();
-  renderOutput();
-  updateTranscriptCharacterCount();
-  showMessage(t("copyOptionsChanged"));
-});
-
-transcriptDisplayModeInputs.forEach((input) => {
-  input.addEventListener("change", () => {
-    if (input.checked && isTranscriptDisplayMode(input.value)) {
-      appSettings.transcriptDisplayMode = input.value;
-      saveAppSettings();
-      renderTranscriptDisplayMode();
-      renderOutput();
-      updateTranscriptCharacterCount();
-      showMessage(t("copyOptionsChanged"));
-    }
-  });
-});
-
-transcriptSearchInput.addEventListener("input", () => {
-  renderTranscriptSearch();
-});
-
-output.addEventListener("select", () => {
-  cacheSelectedOutputText();
-});
-
-codexAnswerOutput.addEventListener("mouseup", () => {
-  cacheSelectedOutputText();
-});
-
-codexAnswerOutput.addEventListener("keyup", () => {
-  cacheSelectedOutputText();
-});
-
-transcriptSearchToggle.addEventListener("click", () => {
-  if (!latestTranscript) {
-    return;
-  }
-
-  isTranscriptSearchExpanded = !isTranscriptSearchExpanded;
-  renderTranscriptSearch();
-  if (isTranscriptSearchExpanded) {
-    transcriptSearchInput.focus();
-  }
-});
-
-transcriptSearchResults.addEventListener("click", async (event) => {
-  const target = event.target;
-
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-
-  const clickable = target.closest<HTMLElement>("[data-timestamp-url]");
-
-  if (!clickable) {
-    return;
-  }
-
-  await openTimestampUrl(clickable.dataset.timestampUrl);
-});
-
-transcriptSearchResults.addEventListener("keydown", async (event) => {
-  if (event.key !== "Enter" && event.key !== " ") {
-    return;
-  }
-
-  const target = event.target;
-
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-
-  const clickable = target.closest<HTMLElement>(".search-result[data-timestamp-url]");
-
-  if (!clickable) {
-    return;
-  }
-
-  event.preventDefault();
-  await openTimestampUrl(clickable.dataset.timestampUrl);
-});
-
-codexAnswerOutput.addEventListener("click", async (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-
-  const timestampLink = target.closest<HTMLElement>("[data-timestamp-url]");
-  if (timestampLink) {
-    event.preventDefault();
-    await openTimestampUrl(timestampLink.dataset.timestampUrl);
-    return;
-  }
-
-  const link = target.closest<HTMLAnchorElement>("a[href]");
-  if (!link) {
-    return;
-  }
-
-  event.preventDefault();
-  if (isYouTubeUrl(link.href)) {
-    await openTimestampUrl(link.href);
-    return;
-  }
-
-  await openExternalUrl(link.href);
-});
-
-document.addEventListener("ui:output-mode-change", (event) => {
-  const mode = (event as CustomEvent<string>).detail;
-  if (mode === "transcript" || mode === "copyPrompt" || mode === "codexAnswer") {
-    setOutputMode(mode, false);
-  }
-});
-
-document.addEventListener("ui:settings-section-change", (event) => {
-  const section = (event as CustomEvent<string>).detail;
-  if (section === "prompts" || section === "copy" || section === "display") {
-    activeSettingsSection = section;
-  }
-});
-
-promptSettingsButton.addEventListener("click", () => {
-  openPromptSettings();
-});
-
-reloadAppButton.addEventListener("click", () => {
-  window.location.reload();
-});
-
-promptSettingsClose.addEventListener("click", () => {
-  closePromptSettings();
-});
-
-followUpClose.addEventListener("click", () => {
-  closeFollowUpModal();
-});
-
-document.addEventListener("ui:settings-dialog-close-request", closePromptSettings);
-document.addEventListener("ui:follow-up-dialog-close-request", closeFollowUpModal);
-
-followUpSubmit.addEventListener("click", async () => {
-  await submitFollowUpQuestion();
-});
-
-codexHistoryList.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-
-  const item = target.closest<HTMLElement>("[data-history-id]");
-  if (!item) {
-    return;
-  }
-
-  restoreCodexHistoryEntry(item.dataset.historyId);
-});
-
-clearCodexHistoryButton.addEventListener("click", () => {
-  clearCodexHistory();
-});
-
-document.addEventListener("keydown", (event) => {
-  if (isDialogOpen(followUpModal) && event.key === "Escape") {
-    event.preventDefault();
-    closeFollowUpModal();
-    return;
-  }
-
-  if (isDialogOpen(followUpModal) && (event.metaKey || event.ctrlKey) && event.key === "Enter") {
-    event.preventDefault();
-    void submitFollowUpQuestion();
-    return;
-  }
-
-  if (!isDialogOpen(promptSettingsModal)) {
-    return;
-  }
-
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closePromptSettings();
-    return;
-  }
-
-});
-
-document.addEventListener("selectionchange", () => {
-  cacheSelectedOutputText();
-});
-
-settingsTemplateSelect.addEventListener("change", () => {
-  renderPromptSettingsEditor(settingsTemplateSelect.value);
-});
-
-settingsAddTemplate.addEventListener("click", () => {
-  const template: PromptTemplate = {
-    id: `custom-${Date.now()}`,
-    label: t("newPrompt"),
-    description: t("newPromptDescription"),
-    instruction: t("newPromptInstruction")
+const secondaryButtonProps = { variant: "outline" as const, size: "lg" as const };
+
+type StatusMessage = { text: string; error: boolean };
+type TemplateDraft = PromptTemplate & { isDefault: boolean };
+type FollowUpContext = { kind: CodexQuestionKind; selectedExcerpt: string };
+
+function App() {
+  const [url, setUrl] = useState("");
+  const [mediaPath, setMediaPath] = useState("");
+  const [promptSettings, setPromptSettings] = useState(loadPromptSettings);
+  const [appSettings, setAppSettings] = useState(loadAppSettings);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(promptSettings.defaultTemplateId);
+  const [captionList, setCaptionList] = useState<CaptionListSuccess | null>(null);
+  const [selectedCaption, setSelectedCaption] = useState<CaptionOption | null>(null);
+  const [transcript, setTranscript] = useState<TranscriptSuccess | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [answerKind, setAnswerKind] = useState<CodexQuestionKind>("initial");
+  const [answerQuestion, setAnswerQuestion] = useState("");
+  const [answerExcerpt, setAnswerExcerpt] = useState("");
+  const [answerContext, setAnswerContext] = useState<CodexAnswerContext | null>(null);
+  const [outputMode, setOutputMode] = useState<CodexOutputMode>("transcript");
+  const [history, setHistory] = useState(loadCodexHistory);
+  const [status, setStatus] = useState<StatusMessage>({ text: "", error: false });
+  const [captionLoading, setCaptionLoading] = useState(false);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [codexLoading, setCodexLoading] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<"prompts" | "copy" | "display">("prompts");
+  const [settingsTemplateId, setSettingsTemplateId] = useState(promptSettings.defaultTemplateId);
+  const [templateDraft, setTemplateDraft] = useState<TemplateDraft>(() => toTemplateDraft(promptSettings, promptSettings.defaultTemplateId));
+  const [uiLanguageDraft, setUiLanguageDraft] = useState(appSettings.uiLanguage);
+  const [completionSoundDraft, setCompletionSoundDraft] = useState(appSettings.completionSoundEnabled);
+  const [debugLog, setDebugLog] = useState<DebugLogReadResult | null>(null);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [followUpQuestion, setFollowUpQuestion] = useState("");
+  const [followUpContext, setFollowUpContext] = useState<FollowUpContext | null>(null);
+
+  const urlInputRef = useRef<HTMLInputElement>(null);
+  const outputRef = useRef<HTMLTextAreaElement>(null);
+  const answerOutputRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsTitleRef = useRef<HTMLInputElement>(null);
+  const followUpRef = useRef<HTMLTextAreaElement>(null);
+  const captionToken = useRef(0);
+  const transcriptToken = useRef(0);
+  const mediaToken = useRef(0);
+  const codexToken = useRef(0);
+  const pendingCodex = useRef<PendingCodexRequest | null>(null);
+  const codexBusy = useRef(false);
+  const autoCheckTimer = useRef<number | undefined>(undefined);
+  const lastCaptionCheckUrl = useRef("");
+  const selectedOutputText = useRef("");
+  const audioContext = useRef<AudioContext | null>(null);
+  const audioPrimed = useRef(false);
+  const settingsRef = useRef(appSettings);
+  settingsRef.current = appSettings;
+
+  const t = (key: keyof (typeof uiText)["ja"], value?: string | number) => {
+    const entry = uiText[appSettings.uiLanguage][key];
+    return typeof entry === "function" ? entry(value as never) : entry;
   };
 
-  promptSettings.templates.push(template);
-  savePromptSettings();
-  renderPromptSettings(template.id);
-});
+  const selectedTemplate =
+    promptSettings.templates.find((template) => template.id === selectedTemplateId) ??
+    promptSettings.templates.find((template) => template.id === promptSettings.defaultTemplateId) ??
+    promptSettings.templates[0];
+  const metadata = transcript ?? captionList;
+  const transcriptText = useMemo(
+    () => (transcript ? buildTranscriptTextForDisplay(transcript, appSettings) : ""),
+    [transcript, appSettings.formatAutomaticTranscript, appSettings.transcriptDisplayMode]
+  );
+  const searchableSegments = useMemo(
+    () => (transcript ? getSearchableSegments(transcript, appSettings) : []),
+    [transcript, appSettings.formatAutomaticTranscript, appSettings.transcriptDisplayMode]
+  );
+  const timestampBaseUrl = transcript?.webpageUrl || captionList?.webpageUrl || "";
+  const searchMatches = useMemo(() => {
+    const query = normalizeSearchText(searchQuery);
+    if (!query) return [];
+    return searchableSegments
+      .filter((segment) => normalizeSearchText(segment.text).includes(query))
+      .slice(0, 50);
+  }, [searchQuery, searchableSegments]);
+  const promptOutput = useMemo(
+    () => (transcript && selectedTemplate ? buildAnalysisPrompt(transcript, selectedTemplate) : ""),
+    [transcript, selectedTemplate, selectedCaption, appSettings, url, timestampBaseUrl]
+  );
+  const outputValue = outputMode === "copyPrompt" ? promptOutput : transcriptText;
+  const answerHtml = useMemo(
+    () => renderMarkdownOutput(answer, { buildTimestampUrl }),
+    [answer, timestampBaseUrl]
+  );
+  const codexRunning = codexLoading;
+  const hasAnswer = answer.trim().length > 0;
 
-settingsDeleteTemplate.addEventListener("click", () => {
-  if (promptSettings.templates.length <= 1) {
-    return;
-  }
+  useEffect(() => {
+    document.documentElement.lang = appSettings.uiLanguage;
+    document.title = appName;
+  }, [appSettings.uiLanguage]);
 
-  const templateId = settingsTemplateSelect.value;
-  promptSettings.templates = promptSettings.templates.filter((template) => template.id !== templateId);
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      urlInputRef.current?.focus();
+      urlInputRef.current?.select();
+    });
+  }, []);
 
-  if (promptSettings.defaultTemplateId === templateId) {
-    promptSettings.defaultTemplateId = promptSettings.templates[0]?.id ?? defaultPromptTemplateId;
-  }
+  useLayoutEffect(() => {
+    const element = outputRef.current;
+    if (!element || outputMode === "codexAnswer") return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, [outputMode, outputValue]);
 
-  const nextTemplateId = promptSettings.templates[0]?.id ?? defaultPromptTemplateId;
-  savePromptSettings();
-  renderPromptSettings(nextTemplateId);
-});
+  useEffect(() => {
+    appendDebugLog("frontend.output.rendered", {
+      mode: outputMode,
+      transcriptChars: transcript?.text.length ?? 0,
+      answerChars: answer.length
+    });
+  }, [outputMode, transcript?.text.length, answer.length]);
 
-settingsResetTemplate.addEventListener("click", () => {
-  promptSettings = createDefaultPromptSettings();
-  savePromptSettings();
-  renderPromptSettings(promptSettings.defaultTemplateId);
-  showMessage(t("settingsReset"));
-});
-
-settingsSaveTemplate.addEventListener("click", () => {
-  const templateId = settingsTemplateSelect.value;
-  const template = promptSettings.templates.find((item) => item.id === templateId);
-
-  if (!template) {
-    return;
-  }
-
-  template.label = settingsTemplateTitle.value.trim() || t("untitledPrompt");
-  template.description = settingsTemplateDescription.value.trim();
-  template.instruction = settingsTemplateBody.value.trim() || t("newPromptInstruction");
-
-  if (settingsTemplateDefault.checked) {
-    promptSettings.defaultTemplateId = template.id;
-  }
-
-  savePromptSettings();
-  renderPromptSettings(template.id);
-  showMessage(t("settingsSaved"));
-});
-
-settingsSaveDisplay.addEventListener("click", () => {
-  appSettings.uiLanguage = settingsUiLanguage.value === "en" ? "en" : "ja";
-  appSettings.completionSoundEnabled = settingsCompletionSound.checked;
-  completionAudioPrimed = false;
-  saveAppSettings();
-  applyUiLanguage();
-  renderPromptSettingsList(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
-  primeCompletionAudio();
-  showMessage(t("displaySaved"));
-});
-
-settingsOpenDebugLog.addEventListener("click", async () => {
-  try {
-    await loadDebugLogIntoSettings();
-    showMessage(t("debugLogLoaded"));
-  } catch (error) {
-    showMessage(formatInvokeError(error, t("debugLogLoadFailed")), true);
-  }
-});
-
-async function loadDebugLogIntoSettings() {
-  const log = await invokeBackend<DebugLogReadResult>("read_debug_log");
-  settingsDebugLogPath.textContent = log.path;
-  settingsDebugLogContent.value = log.content.trim() || t("debugLogEmpty");
-  settingsDebugLogViewer.hidden = false;
-  settingsOpenDebugLog.textContent = t("refreshDebugLog");
-}
-
-function renderCaptionOptions(captions: CaptionOption[]) {
-  const selectedIndex = selectedCaption
-    ? captions.findIndex(
-        (caption) =>
-          caption.language === selectedCaption?.language &&
-          caption.source === selectedCaption?.source
-      )
-    : 0;
-  flushSync(() => {
-    captionListRoot.render(
-      <CaptionOptions
-        options={captions.map((caption, index) => ({
-          index,
-          language: caption.language,
-          name: caption.name,
-          selected: index === Math.max(selectedIndex, 0),
-          source: formatCaptionSource(caption.source)
-        }))}
-      />
-    );
-  });
-  captionCount.textContent = t("captionCount", captions.length);
-  captionPanel.hidden = captions.length <= 1;
-}
-
-function setCaptionLoading(isLoading: boolean) {
-  urlInput.toggleAttribute("aria-busy", isLoading);
-}
-
-function setTranscriptLoading(isLoading: boolean) {
-  askCodexButton.disabled = isLoading || (!latestTranscript && !selectedCaption);
-  askCodexButtonLabel.textContent = isLoading ? t("fetchTranscriptLoading") : t("askCodex");
-  askCodexButton.setAttribute("aria-busy", String(isLoading));
-  askCodexButton.classList.toggle("is-loading", isLoading);
-}
-
-function setMediaTranscriptionLoading(isLoading: boolean) {
-  transcribeMediaButton.disabled = isLoading;
-  transcribeMediaButtonLabel.textContent = isLoading ? t("transcribeMediaLoading") : t("transcribeMedia");
-  transcribeMediaButton.setAttribute("aria-busy", String(isLoading));
-  transcribeMediaButton.classList.toggle("is-loading", isLoading);
-  mediaPathInput.toggleAttribute("aria-busy", isLoading);
-}
-
-function setCodexLoading(isLoading: boolean) {
-  askCodexButton.disabled = isLoading || (!latestTranscript && !selectedCaption);
-  askCodexButtonLabel.textContent = isLoading ? t("askCodexLoading") : t("askCodex");
-  askCodexButton.setAttribute("aria-busy", String(isLoading));
-  askCodexButton.classList.toggle("is-loading", isLoading);
-  cancelCodexAnswerButton.hidden = !isLoading;
-  renderCodexControls();
-}
-
-async function transcribeLocalMedia() {
-  const path = mediaPathInput.value.trim();
-
-  if (!path) {
-    showError(t("mediaPathRequired"));
-    return null;
-  }
-
-  const requestToken = (mediaTranscriptRequestToken += 1);
-  captionRequestToken += 1;
-  transcriptRequestToken += 1;
-  clearResult();
-  setMediaTranscriptionLoading(true);
-  askCodexButton.disabled = true;
-  showMessage(t("transcribingMedia"));
-  appendDebugLog("frontend.transcribe_media.request", {
-    path
-  });
-
-  try {
-    const payload = await invokeBackend<TranscriptSuccess>("transcribe_media", { path });
-
-    if (requestToken !== mediaTranscriptRequestToken) {
-      return null;
-    }
-
-    const caption: CaptionOption = {
-      language: payload.language,
-      name: t("kanaryTranscript"),
-      source: payload.source,
-      isAutoCaption: false
+  useEffect(() => {
+    const prime = () => primeCompletionAudio();
+    window.addEventListener("pointerdown", prime, { capture: true });
+    window.addEventListener("keydown", prime, { capture: true });
+    return () => {
+      window.removeEventListener("pointerdown", prime, { capture: true });
+      window.removeEventListener("keydown", prime, { capture: true });
     };
-    selectedCaption = caption;
-    applyTranscriptPayload(payload, caption);
-    appendDebugLog("frontend.transcribe_media.applied", {
-      textChars: payload.text.length,
-      sourcePath: payload.sourcePath
-    });
-    showMessage(t("mediaTranscriptReady"));
-    return payload;
-  } catch (error) {
-    if (requestToken !== mediaTranscriptRequestToken) {
-      return null;
-    }
+  }, []);
 
-    showError(formatInvokeError(error, t("transcribeMediaFailed")));
-    return null;
-  } finally {
-    if (requestToken === mediaTranscriptRequestToken) {
-      setMediaTranscriptionLoading(false);
-      askCodexButton.disabled = !latestTranscript;
-    }
-  }
-}
+  useEffect(() => () => {
+    captionToken.current += 1;
+    transcriptToken.current += 1;
+    mediaToken.current += 1;
+    codexToken.current += 1;
+    if (autoCheckTimer.current !== undefined) window.clearTimeout(autoCheckTimer.current);
+  }, []);
 
-async function fetchSelectedTranscript(options: { copyAfterFetch: boolean }) {
-  const url = urlInput.value.trim();
-
-  if (!url || !selectedCaption) {
-    showError(t("selectCaption"));
-    return null;
+  function showMessage(text: string, error = false) {
+    setStatus({ text, error });
   }
 
-  const requestToken = (transcriptRequestToken += 1);
-  const requestedCaption = selectedCaption;
-  const startedAt = performance.now();
-  clearTranscript();
-  setTranscriptLoading(true);
-  askCodexButton.disabled = true;
-  appendDebugLog("frontend.fetch_transcript.request", {
-    language: requestedCaption.language,
-    source: requestedCaption.source,
-    copyAfterFetch: options.copyAfterFetch
-  });
+  function formatError(error: unknown, fallback: string) {
+    const message = formatInvokeError(error, fallback);
+    return message.includes("yt-dlp") && !message.includes("brew install yt-dlp")
+      ? `${message}\n${t("ytDlpInstallHint")}`
+      : message;
+  }
 
-  try {
-    const payload = await invokeBackend<TranscriptSuccess>("fetch_transcript", {
-      url,
-      language: requestedCaption.language,
-      source: requestedCaption.source
+  function updateAppSettings(update: Partial<AppSettings>) {
+    setAppSettings((current) => {
+      const next = { ...current, ...update };
+      localStorage.setItem(appSettingsStorageKey, JSON.stringify(next));
+      return next;
     });
+  }
 
-    if (requestToken !== transcriptRequestToken) {
+  function clearTranscript() {
+    transcriptToken.current += 1;
+    codexToken.current += 1;
+    pendingCodex.current = null;
+    codexBusy.current = false;
+    setTranscript(null);
+    setAnswer("");
+    setAnswerKind("initial");
+    setAnswerQuestion("");
+    setAnswerExcerpt("");
+    setAnswerContext(null);
+    setCodexLoading(false);
+    setSearchExpanded(false);
+    setSearchQuery("");
+    selectedOutputText.current = "";
+  }
+
+  function clearResult() {
+    setCaptionList(null);
+    setSelectedCaption(null);
+    clearTranscript();
+    setStatus({ text: "", error: false });
+  }
+
+  function handleUrlChange(nextUrl: string) {
+    setUrl(nextUrl);
+    if (autoCheckTimer.current !== undefined) window.clearTimeout(autoCheckTimer.current);
+    autoCheckTimer.current = window.setTimeout(() => {
+      const trimmed = nextUrl.trim();
+      if (isLikelyYoutubeUrl(trimmed) && trimmed !== lastCaptionCheckUrl.current) {
+        void checkCaptionCandidates(trimmed);
+      }
+    }, 450);
+  }
+
+  async function checkCaptionCandidates(requestUrl = url.trim()) {
+    if (!requestUrl) {
+      showMessage(t("urlRequired"), true);
+      return;
+    }
+    const token = ++captionToken.current;
+    lastCaptionCheckUrl.current = requestUrl;
+    clearResult();
+    setCaptionLoading(true);
+    showMessage(t("fetchingCaptions"));
+    try {
+      const payload = await invokeBackend<CaptionListSuccess>("list_captions", { url: requestUrl });
+      if (token !== captionToken.current) return;
+      const first = payload.captions[0] ?? null;
+      setCaptionList(payload);
+      setSelectedCaption(first);
+      if (!first) {
+        showMessage(t("noCaptions"));
+      } else if (payload.captions.length === 1) {
+        showMessage(t("fetchingTranscript"));
+        const fetched = await fetchSelectedTranscript(first, requestUrl);
+        if (token === captionToken.current && fetched) await askCodexWithTranscript(fetched, first);
+      } else {
+        showMessage(t("chooseCaption"));
+      }
+    } catch (error) {
+      if (token !== captionToken.current) return;
+      lastCaptionCheckUrl.current = "";
+      showMessage(formatError(error, t("listCaptionsFailed")), true);
+    } finally {
+      if (token === captionToken.current) setCaptionLoading(false);
+    }
+  }
+
+  async function chooseCaption(caption: CaptionOption) {
+    setSelectedCaption(caption);
+    await fetchSelectedTranscript(caption, url.trim());
+  }
+
+  async function fetchSelectedTranscript(caption = selectedCaption, requestUrl = url.trim()) {
+    if (!requestUrl || !caption) {
+      showMessage(t("selectCaption"), true);
       return null;
     }
+    const startedAt = performance.now();
+    clearTranscript();
+    const token = ++transcriptToken.current;
+    setTranscriptLoading(true);
+    appendDebugLog("frontend.fetch_transcript.request", { language: caption.language, source: caption.source });
+    try {
+      const payload = await invokeBackend<TranscriptSuccess>("fetch_transcript", {
+        url: requestUrl,
+        language: caption.language,
+        source: caption.source
+      });
+      if (token !== transcriptToken.current) return null;
+      setTranscript(payload);
+      setSelectedCaption(caption);
+      appendDebugLog("frontend.fetch_transcript.applied", {
+        elapsedMs: Math.round(performance.now() - startedAt),
+        textChars: payload.text.length,
+        timedSegments: payload.timedSegments.length
+      });
+      showMessage(t("captionReady"));
+      return payload;
+    } catch (error) {
+      if (token !== transcriptToken.current) return null;
+      setTranscript(null);
+      showMessage(formatError(error, t("fetchTranscriptFailed")), true);
+      return null;
+    } finally {
+      if (token === transcriptToken.current) setTranscriptLoading(false);
+    }
+  }
 
-    applyTranscriptPayload(payload, requestedCaption);
-    appendDebugLog("frontend.fetch_transcript.applied", {
-      elapsedMs: Math.round(performance.now() - startedAt),
-      textChars: payload.text.length,
-      timedSegments: payload.timedSegments.length
+  async function transcribeLocalMedia() {
+    const path = mediaPath.trim();
+    if (!path) {
+      showMessage(t("mediaPathRequired"), true);
+      return;
+    }
+    const token = ++mediaToken.current;
+    captionToken.current += 1;
+    clearResult();
+    setMediaLoading(true);
+    showMessage(t("transcribingMedia"));
+    appendDebugLog("frontend.transcribe_media.request", { path });
+    try {
+      const payload = await invokeBackend<TranscriptSuccess>("transcribe_media", { path });
+      if (token !== mediaToken.current) return;
+      const caption: CaptionOption = {
+        language: payload.language,
+        name: t("kanaryTranscript"),
+        source: payload.source,
+        isAutoCaption: false
+      };
+      setSelectedCaption(caption);
+      setTranscript(payload);
+      appendDebugLog("frontend.transcribe_media.applied", { textChars: payload.text.length, sourcePath: payload.sourcePath });
+      showMessage(t("mediaTranscriptReady"));
+    } catch (error) {
+      if (token === mediaToken.current) showMessage(formatError(error, t("transcribeMediaFailed")), true);
+    } finally {
+      if (token === mediaToken.current) setMediaLoading(false);
+    }
+  }
+
+  function buildTimestampUrl(startSeconds: number) {
+    return buildTimestampUrlFromBase(timestampBaseUrl, startSeconds);
+  }
+
+  function formatCaptionSource(source: CaptionSource) {
+    if (source === "manual") return t("manualCaption");
+    if (source === "kanary") return t("kanaryTranscript");
+    return t("automaticCaption");
+  }
+
+  function formatCaptionLabel(caption: CaptionOption) {
+    return `${caption.language} (${formatCaptionSource(caption.source)})`;
+  }
+
+  function buildAnalysisPrompt(
+    value: TranscriptSuccess,
+    template: PromptTemplate,
+    options: { includeImageInstruction?: boolean; caption?: CaptionOption | null } = {}
+  ) {
+    const caption = options.caption === undefined ? selectedCaption : options.caption;
+    return buildAnalysisPromptText(value, template, {
+      includeImageInstruction: options.includeImageInstruction ?? appSettings.includeImagePrompt,
+      transcriptText: buildTranscriptTextForDisplay(value, appSettings),
+      captionLabel: caption
+        ? formatCaptionLabel({ ...caption, language: value.language, source: value.source })
+        : `${value.language} (${formatCaptionSource(value.source)})`,
+      fallbackUrl: url.trim(),
+      promptCreatedDate: new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" }),
+      transcriptDisplayMode: appSettings.transcriptDisplayMode,
+      buildTimestampUrl
     });
+  }
 
-    if (options.copyAfterFetch) {
+  function getTranscriptAnswerContext(value: TranscriptSuccess): CodexAnswerContext {
+    return {
+      videoId: value.videoId,
+      title: value.title || value.videoId,
+      url: value.webpageUrl || value.sourcePath || url.trim(),
+      language: value.language,
+      source: value.source
+    };
+  }
+
+  function getActiveAnswerContext() {
+    return answerContext ?? (transcript ? getTranscriptAnswerContext(transcript) : null);
+  }
+
+  async function askCodexWithTranscript(value: TranscriptSuccess, caption = selectedCaption) {
+    if (!selectedTemplate) return;
+    const prompt = buildAnalysisPrompt(value, selectedTemplate, { includeImageInstruction: false, caption });
+    appendDebugLog("frontend.codex_prompt.built", {
+      templateId: selectedTemplate.id,
+      generateImage: appSettings.includeImagePrompt,
+      promptChars: prompt.length,
+      promptPreview: truncateForLog(prompt, 8000)
+    });
+    await startCodexRequest(prompt, {
+      questionKind: "initial",
+      questionText: selectedTemplate.label,
+      selectedExcerpt: "",
+      templateId: selectedTemplate.id,
+      generateImage: appSettings.includeImagePrompt,
+      answerContext: getTranscriptAnswerContext(value)
+    });
+  }
+
+  async function askCodex() {
+    const value = transcript ?? (await fetchSelectedTranscript());
+    if (!value) {
+      showMessage(t("codexPromptRequired"), true);
+      return;
+    }
+    await askCodexWithTranscript(value);
+  }
+
+  async function startCodexRequest(
+    prompt: string,
+    options: Omit<PendingCodexRequest, "jobId" | "token" | "prompt"> & { generateImage: boolean }
+  ) {
+    if (codexBusy.current) return;
+    codexBusy.current = true;
+    primeCompletionAudio();
+    const token = ++codexToken.current;
+    setCodexLoading(true);
+    setAnswer("");
+    setAnswerContext(options.answerContext);
+    setOutputMode("codexAnswer");
+    showMessage(t("askingCodex"));
+    try {
+      const started = await invokeBackend<CodexJobStartSuccess>("start_codex_request", {
+        prompt,
+        generateImage: options.generateImage
+      });
+      if (token !== codexToken.current) {
+        codexBusy.current = false;
+        void invokeBackend("cancel_codex_request", { jobId: started.jobId });
+        return;
+      }
+      const request: PendingCodexRequest = { ...options, jobId: started.jobId, token, prompt };
+      pendingCodex.current = request;
+      while (token === codexToken.current && pendingCodex.current?.jobId === started.jobId) {
+        await wait(codexPollIntervalMs);
+        if (token !== codexToken.current) return;
+        const result = await invokeBackend<CodexJobStatus>("get_codex_request", { jobId: started.jobId });
+        if (result.status === "running") continue;
+        pendingCodex.current = null;
+        codexBusy.current = false;
+        setCodexLoading(false);
+        if (result.status === "completed" && result.answer) {
+          const normalized = normalizeCodexAnswerMarkdown(result.answer);
+          setAnswer(normalized);
+          setAnswerKind(request.questionKind);
+          setAnswerQuestion(request.questionText);
+          setAnswerExcerpt(request.selectedExcerpt);
+          setAnswerContext(request.answerContext);
+          saveHistoryEntry(request, normalized);
+          playCompletionSound();
+        } else {
+          const fallback = result.status === "cancelled" ? t("codexCancelled") : t("codexAnswerFailed");
+          const message = result.error || fallback;
+          setAnswer(message);
+          showMessage(message, result.status !== "cancelled");
+        }
+        return;
+      }
+    } catch (error) {
+      if (token !== codexToken.current) return;
+      pendingCodex.current = null;
+      codexBusy.current = false;
+      setCodexLoading(false);
+      const message = formatError(error, t("codexAnswerFailed"));
+      setAnswer(message);
+      showMessage(message, true);
+    }
+  }
+
+  async function cancelCodexRequest() {
+    const request = pendingCodex.current;
+    codexToken.current += 1;
+    pendingCodex.current = null;
+    codexBusy.current = false;
+    setCodexLoading(false);
+    if (request) {
       try {
-        await copyTranscriptToClipboard(payload, getDefaultPromptTemplate());
+        await invokeBackend<CodexJobStatus>("cancel_codex_request", { jobId: request.jobId });
       } catch {
-        showMessage(t("transcriptCopyFailed"), true);
+        // The local UI should recover even if the child process already exited.
       }
     }
-
-    showMessage(t("captionReady"));
-    return payload;
-  } catch (error) {
-    if (requestToken !== transcriptRequestToken) {
-      return null;
-    }
-
-    showError(formatInvokeError(error, t("fetchTranscriptFailed")));
-    return null;
-  } finally {
-    if (requestToken === transcriptRequestToken) {
-      setTranscriptLoading(false);
-      askCodexButton.disabled = !latestTranscript && !selectedCaption;
-    }
-  }
-}
-
-function applyTranscriptPayload(payload: TranscriptSuccess, requestedCaption: CaptionOption) {
-  latestTranscript = payload;
-  title.textContent = payload.title || t("transcriptTitle");
-  renderVideoPreview(payload.title, payload.thumbnailUrl);
-  videoDuration.textContent = payload.duration || "-";
-  renderCanonicalUrl(payload.webpageUrl);
-  viewCount.textContent = formatCount(payload.viewCount);
-  language.textContent = formatCaptionLabel({
-    language: payload.language,
-    name: requestedCaption.name,
-    source: payload.source,
-    isAutoCaption: payload.source === "automatic"
-  });
-  updateCaptionSource();
-  updateTranscriptCharacterCount();
-  renderTranscriptSearch();
-  askCodexButton.disabled = payload.text.length === 0;
-  renderOutput();
-}
-
-function renderVideoPreview(videoTitle = "", thumbnailUrl?: string) {
-  const titleText = videoTitle.trim();
-  videoPreviewTitle.textContent = titleText || "-";
-
-  if (!thumbnailUrl) {
-    videoThumbnail.removeAttribute("src");
-    videoPreview.hidden = !titleText;
-    videoPreview.classList.add("is-text-only");
-    return;
+    setAnswer(t("codexCancelled"));
+    showMessage(t("codexCancelled"));
   }
 
-  videoThumbnail.src = thumbnailUrl;
-  videoPreview.hidden = false;
-  videoPreview.classList.remove("is-text-only");
+  async function copyAnswer() {
+    const text = getCodexAnswerTextForCopy(answer);
+    if (!text) {
+      showMessage(t("codexNoAnswer"), true);
+      return;
+    }
+    try {
+      await copyText(text);
+      showMessage(t("codexAnswerCopied"));
+    } catch {
+      showMessage(t("copyFailed"), true);
+    }
+  }
+
+  async function rerunAnswer() {
+    if (!transcript || !selectedTemplate) {
+      showMessage(t("codexPromptRequired"), true);
+      return;
+    }
+    const prompt =
+      answerKind === "followup" || answerKind === "selection"
+        ? buildFollowUpPrompt(answerQuestion || selectedTemplate.label, answerExcerpt)
+        : buildAnalysisPrompt(transcript, selectedTemplate, { includeImageInstruction: false });
+    await startCodexRequest(prompt, {
+      questionKind: "rerun",
+      questionText: answerQuestion || selectedTemplate.label,
+      selectedExcerpt: answerExcerpt,
+      templateId: selectedTemplate.id,
+      generateImage: appSettings.includeImagePrompt,
+      answerContext: getTranscriptAnswerContext(transcript)
+    });
+  }
+
+  function buildFollowUpPrompt(question: string, excerpt: string) {
+    return buildFollowUpPromptText({
+      question,
+      selectedExcerpt: excerpt,
+      transcript,
+      context: getActiveAnswerContext(),
+      sourceAnswer: answer.trim(),
+      fallbackUrl: url.trim(),
+      formatCaptionSource
+    });
+  }
+
+  function openFollowUp(kind: CodexQuestionKind, excerpt: string) {
+    if (!transcript && !answer.trim()) {
+      showMessage(t("codexPromptRequired"), true);
+      return;
+    }
+    setFollowUpContext({ kind, selectedExcerpt: excerpt });
+    setFollowUpQuestion("");
+    setFollowUpOpen(true);
+    requestAnimationFrame(() => followUpRef.current?.focus());
+  }
+
+  async function submitFollowUp() {
+    const question = followUpQuestion.trim();
+    if (!question) {
+      showMessage(t("followUpRequired"), true);
+      return;
+    }
+    const context = followUpContext ?? { kind: "followup" as CodexQuestionKind, selectedExcerpt: "" };
+    setFollowUpOpen(false);
+    setFollowUpContext(null);
+    if (!selectedTemplate) return;
+    await startCodexRequest(buildFollowUpPrompt(question, context.selectedExcerpt), {
+      questionKind: context.kind,
+      questionText: question,
+      selectedExcerpt: context.selectedExcerpt,
+      templateId: selectedTemplate.id,
+      generateImage: false,
+      answerContext: getActiveAnswerContext()
+    });
+  }
+
+  function cacheSelectedText() {
+    const textarea = outputRef.current;
+    if (outputMode !== "codexAnswer" && textarea) {
+      const start = textarea.selectionStart ?? 0;
+      const end = textarea.selectionEnd ?? 0;
+      const text = textarea.value.slice(Math.min(start, end), Math.max(start, end)).trim();
+      if (text) selectedOutputText.current = text;
+      return;
+    }
+    const selection = window.getSelection();
+    const text = selection?.toString().trim() ?? "";
+    if (text && answerOutputRef.current?.contains(selection?.anchorNode ?? null)) selectedOutputText.current = text;
+  }
+
+  function askAboutSelection() {
+    cacheSelectedText();
+    if (!selectedOutputText.current) {
+      showMessage(t("codexNoSelection"), true);
+      return;
+    }
+    openFollowUp("selection", selectedOutputText.current);
+  }
+
+  function saveHistoryEntry(request: PendingCodexRequest, answerMarkdown: string) {
+    const context = request.answerContext ?? (transcript ? getTranscriptAnswerContext(transcript) : null);
+    if (!context) return;
+    const entry: CodexHistoryEntry = {
+      id: `history-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date().toISOString(),
+      videoId: context.videoId,
+      title: context.title || context.videoId,
+      url: context.url,
+      language: context.language,
+      source: context.source,
+      templateId: request.templateId,
+      questionKind: request.questionKind,
+      questionText: request.questionText,
+      selectedExcerpt: request.selectedExcerpt,
+      answerMarkdown
+    };
+    setHistory((current) => {
+      const next = [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, codexHistoryLimit);
+      try {
+        localStorage.setItem(codexHistoryStorageKey, JSON.stringify(next));
+      } catch {
+        // History is best-effort and must not discard the completed answer.
+      }
+      return next;
+    });
+  }
+
+  function restoreHistory(entry: CodexHistoryEntry) {
+    setAnswer(normalizeCodexAnswerMarkdown(entry.answerMarkdown));
+    setAnswerKind("history");
+    setAnswerQuestion(`${t("historyRestoredPrefix")}: ${entry.questionText}`);
+    setAnswerExcerpt(entry.selectedExcerpt);
+    setAnswerContext({
+      videoId: entry.videoId,
+      title: entry.title || entry.videoId,
+      url: entry.url,
+      language: entry.language,
+      source: entry.source
+    });
+    setOutputMode("codexAnswer");
+    showMessage(t("codexHistoryRestored"));
+  }
+
+  function clearHistory() {
+    setHistory([]);
+    localStorage.removeItem(codexHistoryStorageKey);
+    showMessage(t("codexHistoryCleared"));
+  }
+
+  function selectSettingsTemplate(id: string) {
+    setSettingsTemplateId(id);
+    setTemplateDraft(toTemplateDraft(promptSettings, id));
+  }
+
+  function openSettings() {
+    setUiLanguageDraft(appSettings.uiLanguage);
+    setCompletionSoundDraft(appSettings.completionSoundEnabled);
+    selectSettingsTemplate(selectedTemplateId || promptSettings.defaultTemplateId);
+    setSettingsOpen(true);
+    requestAnimationFrame(() => {
+      settingsTitleRef.current?.focus();
+      settingsTitleRef.current?.select();
+    });
+  }
+
+  function closeSettings() {
+    setSettingsOpen(false);
+    requestAnimationFrame(() => settingsButtonRef.current?.focus());
+  }
+
+  function addTemplate() {
+    const template: PromptTemplate = {
+      id: `custom-${Date.now()}`,
+      label: t("newPrompt"),
+      description: t("newPromptDescription"),
+      instruction: t("newPromptInstruction")
+    };
+    const next = { ...promptSettings, templates: [...promptSettings.templates, template] };
+    setPromptSettings(next);
+    storePromptSettings(next);
+    setSettingsTemplateId(template.id);
+    setTemplateDraft({ ...template, isDefault: false });
+  }
+
+  function deleteTemplate() {
+    if (promptSettings.templates.length <= 1) return;
+    const templates = promptSettings.templates.filter((template) => template.id !== settingsTemplateId);
+    const defaultTemplateId =
+      promptSettings.defaultTemplateId === settingsTemplateId
+        ? templates[0]?.id ?? defaultPromptTemplateId
+        : promptSettings.defaultTemplateId;
+    const next = { defaultTemplateId, templates };
+    const nextId = templates[0]?.id ?? defaultTemplateId;
+    setPromptSettings(next);
+    storePromptSettings(next);
+    setSelectedTemplateId(resolveTemplateId(next, selectedTemplateId));
+    setSettingsTemplateId(nextId);
+    setTemplateDraft(toTemplateDraft(next, nextId));
+  }
+
+  function resetTemplates() {
+    const next = createDefaultPromptSettings();
+    setPromptSettings(next);
+    storePromptSettings(next);
+    setSelectedTemplateId(next.defaultTemplateId);
+    setSettingsTemplateId(next.defaultTemplateId);
+    setTemplateDraft(toTemplateDraft(next, next.defaultTemplateId));
+    showMessage(t("settingsReset"));
+  }
+
+  function saveTemplate() {
+    const templates = promptSettings.templates.map((template) =>
+      template.id === settingsTemplateId
+        ? {
+            ...template,
+            label: templateDraft.label.trim() || t("untitledPrompt"),
+            description: templateDraft.description.trim(),
+            instruction: templateDraft.instruction.trim() || t("newPromptInstruction")
+          }
+        : template
+    );
+    const next = {
+      templates,
+      defaultTemplateId: templateDraft.isDefault ? settingsTemplateId : promptSettings.defaultTemplateId
+    };
+    setPromptSettings(next);
+    storePromptSettings(next);
+    setSelectedTemplateId(settingsTemplateId);
+    setTemplateDraft(toTemplateDraft(next, settingsTemplateId));
+    showMessage(t("settingsSaved"));
+  }
+
+  function saveDisplaySettings() {
+    updateAppSettings({ uiLanguage: uiLanguageDraft, completionSoundEnabled: completionSoundDraft });
+    audioPrimed.current = false;
+    primeCompletionAudio();
+    const nextText = uiText[uiLanguageDraft].displaySaved;
+    showMessage(typeof nextText === "string" ? nextText : "");
+  }
+
+  async function loadDebugLog() {
+    try {
+      const log = await invokeBackend<DebugLogReadResult>("read_debug_log");
+      setDebugLog(log);
+      showMessage(t("debugLogLoaded"));
+    } catch (error) {
+      showMessage(formatError(error, t("debugLogLoadFailed")), true);
+    }
+  }
+
+  function primeCompletionAudio() {
+    if (!settingsRef.current.completionSoundEnabled || audioPrimed.current) return;
+    const context = audioContext.current ?? new AudioContext();
+    audioContext.current = context;
+    if (context.state === "suspended") {
+      void context.resume().then(() => { audioPrimed.current = context.state === "running"; }).catch(() => {});
+    } else {
+      audioPrimed.current = true;
+    }
+  }
+
+  function playCompletionSound() {
+    if (!settingsRef.current.completionSoundEnabled) return;
+    const context = audioContext.current ?? new AudioContext();
+    audioContext.current = context;
+    const play = () => {
+      const now = context.currentTime;
+      playCompletionTone(context, now, 660, 0.055);
+      playCompletionTone(context, now + 0.075, 880, 0.075);
+    };
+    if (context.state === "suspended") void context.resume().then(play).catch(() => {});
+    else play();
+  }
+
+  async function openTimestampUrl(targetUrl: string | undefined) {
+    if (!targetUrl) return;
+    try {
+      await invokeBackend("open_youtube_url", { url: targetUrl });
+    } catch {
+      window.open(targetUrl, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  async function openExternalUrl(targetUrl: string | undefined) {
+    if (!targetUrl) return;
+    try {
+      await invokeBackend("open_external_url", { url: targetUrl });
+    } catch {
+      window.open(targetUrl, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  async function handleAnswerLink(event: React.MouseEvent<HTMLDivElement>) {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const timestampLink = target.closest<HTMLElement>("[data-timestamp-url]");
+    if (timestampLink) {
+      event.preventDefault();
+      await openTimestampUrl(timestampLink.dataset.timestampUrl);
+      return;
+    }
+    const link = target.closest<HTMLAnchorElement>("a[href]");
+    if (!link) return;
+    event.preventDefault();
+    if (isLikelyYoutubeUrl(link.href)) await openTimestampUrl(link.href);
+    else await openExternalUrl(link.href);
+  }
+
+  const source = transcript?.source ?? selectedCaption?.source;
+  const locale = appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US";
+  const searchStatus = !transcript || searchableSegments.length === 0
+    ? t("transcriptSearchDisabled")
+    : !normalizeSearchText(searchQuery)
+      ? t("transcriptSearchReady")
+      : searchMatches.length === 0
+        ? t("transcriptSearchEmpty")
+        : t("transcriptSearchCount", searchMatches.length);
+
+  return (
+    <section className="workspace">
+      <header className="app-section app-header">
+        <div className="brand-lockup">
+          <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 7.3a3 3 0 0 0-2.1-2.1C17 4.7 12 4.7 12 4.7s-5 0-6.9.5A3 3 0 0 0 3 7.3 31.4 31.4 0 0 0 2.5 12c0 1.6.1 3.2.5 4.7a3 3 0 0 0 2.1 2.1c1.9.5 6.9.5 6.9.5s5 0 6.9-.5a3 3 0 0 0 2.1-2.1c.4-1.5.5-3.1.5-4.7 0-1.6-.1-3.2-.5-4.7Z" /><path d="m10 9 5 3-5 3V9Z" /></svg></span>
+          <div><h1>{appName}</h1><p>{t("heading")}</p></div>
+        </div>
+        <SectionMarker index="01" label="INPUT" />
+        <form className="input-panel" id="caption-form" onSubmit={(event) => { event.preventDefault(); void checkCaptionCandidates(); }}>
+          <div className="command-row">
+            <Input ref={urlInputRef} id="youtube-url" name="url" type="url" aria-label="YouTube URL" placeholder="https://www.youtube.com/watch?v=..." autoComplete="off" required value={url} onChange={(event) => handleUrlChange(event.target.value)} aria-busy={captionLoading} />
+            <Button id="ask-codex-button" type="button" size="lg" disabled={codexRunning || transcriptLoading || (!transcript && !selectedCaption)} className={codexRunning || transcriptLoading ? "is-loading" : undefined} aria-busy={codexRunning || transcriptLoading} onClick={() => void askCodex()}>
+              <span>{codexRunning ? t("askCodexLoading") : transcriptLoading ? t("fetchTranscriptLoading") : t("askCodex")}</span><Spinner className="loading-indicator" data-icon="inline-end" />
+            </Button>
+            <Button {...secondaryButtonProps} id="transcript-search-toggle" type="button" disabled={!transcript} aria-expanded={Boolean(transcript && searchExpanded)} aria-controls="transcript-search-panel" onClick={() => { const next = !searchExpanded; setSearchExpanded(next); if (next) requestAnimationFrame(() => searchInputRef.current?.focus()); }}>
+              <SearchIcon data-icon="inline-start" /><span>{t("transcriptSearchToggle")}</span>
+            </Button>
+          </div>
+          <div className="media-command-row">
+            <label className="sr-only" htmlFor="local-media-path">{t("mediaPathLabel")}</label>
+            <Input id="local-media-path" name="media-path" type="text" placeholder={t("mediaPathPlaceholder")} autoComplete="off" value={mediaPath} onChange={(event) => setMediaPath(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void transcribeLocalMedia(); } }} aria-busy={mediaLoading} />
+            <Button {...secondaryButtonProps} id="transcribe-media-button" type="button" disabled={mediaLoading} className={mediaLoading ? "is-loading" : undefined} aria-busy={mediaLoading} onClick={() => void transcribeLocalMedia()}>
+              <span>{mediaLoading ? t("transcribeMediaLoading") : t("transcribeMedia")}</span><Spinner className="loading-indicator" data-icon="inline-end" />
+            </Button>
+          </div>
+          <Alert className={`status-message${status.error ? " error" : ""}`} id="message" role="status" aria-live="polite" hidden={!status.text.trim()}>{status.text}</Alert>
+        </form>
+        <div className="app-header-actions">
+          <Button {...secondaryButtonProps} id="reload-app-button" type="button" onClick={() => window.location.reload()}><RotateCwIcon data-icon="inline-start" /><span>{t("reloadButton")}</span></Button>
+          <Button {...secondaryButtonProps} ref={settingsButtonRef} id="prompt-settings-button" type="button" onClick={openSettings}><SettingsIcon data-icon="inline-start" /><span>{t("settingsButton")}</span></Button>
+        </div>
+      </header>
+
+      <section className="result-layout" aria-live="polite">
+        <section className="app-section info-section">
+          <SectionMarker index="02" label="VIDEO INFO" />
+          <div className="meta-panel">
+            <div className={`video-preview${metadata?.thumbnailUrl ? "" : " is-text-only"}`} id="video-preview" hidden={!metadata?.title}>
+              {metadata?.thumbnailUrl ? <img id="video-thumbnail" src={metadata.thumbnailUrl} alt="" loading="lazy" /> : null}
+              <div className="video-preview-body"><span className="label">{t("transcriptTitle")}</span><strong id="video-preview-title">{metadata?.title || "-"}</strong></div>
+            </div>
+            <MetaItem label={t("selectedLanguage")} value={selectedCaption ? formatCaptionLabel(selectedCaption) : "-"} />
+            <MetaItem label={t("characterCount")} value={transcriptText.length.toLocaleString(locale)} />
+            <MetaItem label={t("videoDuration")} value={metadata?.duration || "-"} />
+            <div className="meta-summary-item"><span className="label">{t("canonicalUrl")}</span><strong id="canonical-url">{metadata?.webpageUrl ? <a href={metadata.webpageUrl} onClick={(event) => { event.preventDefault(); void openTimestampUrl(metadata.webpageUrl); }}>{t("canonicalUrlLink")}</a> : "-"}</strong></div>
+            <MetaItem label={t("viewCount")} value={typeof metadata?.viewCount === "number" ? metadata.viewCount.toLocaleString(locale) : "-"} />
+            <MetaItem label={t("captionSourceLabel")} value={source ? formatCaptionSource(source) : "-"} />
+            <div className="meta-prompt-settings">
+              <label className="label" htmlFor="prompt-template">{t("copyPrompt")}</label>
+              <NativeSelect id="prompt-template" className="w-full" value={selectedTemplate?.id} onChange={(event) => { setSelectedTemplateId(event.target.value); if (transcript) showMessage(t("promptChanged")); }}>
+                {promptSettings.templates.map((template) => <NativeSelectOption key={template.id} value={template.id}>{template.label}</NativeSelectOption>)}
+              </NativeSelect>
+              <p className="prompt-description" id="prompt-description">{selectedTemplate?.description}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="app-section output-section">
+          <SectionMarker index="03" label="OUTPUT" />
+          <div className="output-panel">
+            <h2 id="video-title" hidden>{metadata?.title || t("transcriptTitle")}</h2>
+            <section className="caption-panel" id="caption-panel" hidden={(captionList?.captions.length ?? 0) <= 1}>
+              <div className="caption-panel-header"><h3>{t("captionsTitle")}</h3><span id="caption-count">{t("captionCount", captionList?.captions.length ?? 0)}</span></div>
+              <div className="caption-list" id="caption-list">
+                {captionList?.captions.map((caption, index) => (
+                  <label className="caption-option" key={`${caption.language}-${caption.source}-${index}`}>
+                    <input type="radio" name="caption-option" checked={caption.language === selectedCaption?.language && caption.source === selectedCaption?.source} onChange={() => void chooseCaption(caption)} />
+                    <span className="caption-option-body"><strong>{caption.name || caption.language}</strong><span>{caption.language} <Badge variant="secondary">{formatCaptionSource(caption.source)}</Badge></span></span>
+                  </label>
+                ))}
+              </div>
+            </section>
+            <section className="search-panel" id="transcript-search-panel" hidden={!transcript || !searchExpanded}>
+              <div className="search-header"><h3>{t("transcriptSearchTitle")}</h3><span id="transcript-search-count">{searchStatus}</span></div>
+              <label className="label" htmlFor="transcript-search">{t("transcriptSearchLabel")}</label>
+              <Input ref={searchInputRef} id="transcript-search" type="search" autoComplete="off" disabled={searchableSegments.length === 0} placeholder={t("transcriptSearchPlaceholder")} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+              <div className="search-results" id="transcript-search-results">
+                {searchMatches.map((segment) => <Button className="search-result" variant="ghost" type="button" key={`${segment.startLabel}-${segment.startSeconds}`} onClick={() => void openTimestampUrl(buildTimestampUrl(segment.startSeconds))}><span className="search-result-body"><strong>{segment.startLabel}</strong><span>{truncateSearchResult(segment.text)}</span></span><span className="search-result-action">{t("openTimestamp")}</span></Button>)}
+              </div>
+            </section>
+            <Tabs value={outputMode} onValueChange={(value) => { if (isOutputMode(value)) setOutputMode(value); }} className="output-tabs-shell">
+              <div className="output-tabs">
+                <TabsList variant="line" aria-label="Output view" className="output-tabs-list">
+                  <TabsTrigger className="output-tab" id="transcript-view-tab" value="transcript" data-output-mode="transcript" aria-controls="transcript-output">{t("transcriptView")}</TabsTrigger>
+                  <TabsTrigger className="output-tab" id="copy-prompt-view-tab" value="copyPrompt" data-output-mode="copyPrompt" aria-controls="transcript-output">{t("copyPromptView")}</TabsTrigger>
+                  <TabsTrigger className="output-tab" id="codex-answer-view-tab" value="codexAnswer" data-output-mode="codexAnswer" aria-controls="codex-answer-output">{t("codexAnswerView")}</TabsTrigger>
+                </TabsList>
+                <span className="output-tab-divider" aria-hidden="true" hidden={outputMode !== "codexAnswer"} />
+                <div className="codex-toolbar" id="codex-toolbar" hidden={outputMode !== "codexAnswer"}>
+                  <ToolbarButton id="copy-codex-answer" disabled={!hasAnswer || codexRunning} onClick={() => void copyAnswer()}>{t("copyAnswer")}</ToolbarButton>
+                  <ToolbarButton id="rerun-codex-answer" disabled={!transcript || answerKind === "history" || codexRunning} onClick={() => void rerunAnswer()}>{t("rerunAnswer")}</ToolbarButton>
+                  <ToolbarButton id="follow-up-codex-answer" disabled={!hasAnswer || codexRunning} onClick={() => openFollowUp("followup", "")}>{t("followUpAnswer")}</ToolbarButton>
+                  <ToolbarButton id="ask-selection-codex" disabled={codexRunning || (!transcript && !hasAnswer)} onClick={askAboutSelection}>{t("askSelection")}</ToolbarButton>
+                  <Button id="cancel-codex-answer" type="button" variant="destructive" size="sm" hidden={!codexRunning} onClick={() => void cancelCodexRequest()}>{t("cancelCodex")}</Button>
+                </div>
+              </div>
+            </Tabs>
+            <Textarea ref={outputRef} id="transcript-output" spellCheck={false} readOnly value={outputValue} hidden={outputMode === "codexAnswer"} onSelect={cacheSelectedText} />
+            <div ref={answerOutputRef} id="codex-answer-output" className="markdown-output" hidden={outputMode !== "codexAnswer"} dangerouslySetInnerHTML={{ __html: answerHtml }} onClick={(event) => void handleAnswerLink(event)} onMouseUp={cacheSelectedText} onKeyUp={cacheSelectedText} />
+            <section className="history-panel" id="codex-history-panel" hidden={history.length === 0}>
+              <div className="history-header"><h3>{t("codexHistoryTitle")}</h3><div className="history-header-actions"><span id="codex-history-count">{history.length.toLocaleString(locale)}</span><ToolbarButton id="clear-codex-history" onClick={clearHistory}>{t("clearCodexHistory")}</ToolbarButton></div></div>
+              <div className="history-list" id="codex-history-list">
+                {history.length === 0 ? <Empty className="history-empty"><EmptyDescription>{t("codexHistoryEmpty")}</EmptyDescription></Empty> : history.map((entry) => {
+                  const date = new Date(entry.createdAt).toLocaleString(locale);
+                  const question = entry.questionText ? ` / ${entry.questionText}` : "";
+                  return <Button className="history-item" variant="ghost" type="button" key={entry.id} onClick={() => restoreHistory(entry)}><strong>{entry.title}</strong><span>{date} / {formatCaptionSource(entry.source)}{question}</span></Button>;
+                })}
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <PersistentDialog id="prompt-settings-modal" open={settingsOpen} onClose={closeSettings} className="settings-dialog-content" titleId="prompt-settings-title">
+        <section className="settings-panel">
+          <div className="settings-header"><div><p className="eyebrow">{t("settingsEyebrow")}</p><h2 id="prompt-settings-title">{t("settingsTitle")}</h2></div><ToolbarButton id="prompt-settings-close" onClick={closeSettings}>{t("close")}</ToolbarButton></div>
+          <Tabs value={settingsSection} onValueChange={(value) => { if (isSettingsSection(value)) setSettingsSection(value); }}>
+            <TabsList variant="line" aria-label="Settings sections" className="settings-tabs">
+              <TabsTrigger className="settings-tab" id="settings-prompts-tab" value="prompts" data-settings-section="prompts">{t("promptsTab")}</TabsTrigger>
+              <TabsTrigger className="settings-tab" id="settings-copy-tab" value="copy" data-settings-section="copy">{t("copyTab")}</TabsTrigger>
+              <TabsTrigger className="settings-tab" id="settings-display-tab" value="display" data-settings-section="display">{t("displayTab")}</TabsTrigger>
+            </TabsList>
+            <div className="settings-body">
+              <section className="settings-section" id="settings-prompts-section" role="tabpanel" aria-labelledby="settings-prompts-tab" hidden={settingsSection !== "prompts"}>
+                <div className="settings-template-list"><label className="label" htmlFor="settings-template-select">{t("template")}</label><select id="settings-template-select" size={6} value={settingsTemplateId} onChange={(event) => selectSettingsTemplate(event.target.value)}>{promptSettings.templates.map((template) => <option key={template.id} value={template.id}>{template.label}{template.id === promptSettings.defaultTemplateId ? t("defaultMark") : ""}</option>)}</select><div className="settings-actions"><ToolbarButton id="settings-add-template" onClick={addTemplate}>{t("add")}</ToolbarButton><ToolbarButton id="settings-delete-template" disabled={promptSettings.templates.length <= 1} onClick={deleteTemplate}>{t("delete")}</ToolbarButton></div></div>
+                <div className="settings-editor">
+                  <FormField id="settings-template-title" label={t("title")}><Input ref={settingsTitleRef} id="settings-template-title" type="text" value={templateDraft.label} onChange={(event) => setTemplateDraft((draft) => ({ ...draft, label: event.target.value }))} /></FormField>
+                  <FormField id="settings-template-description" label={t("description")}><Input id="settings-template-description" type="text" value={templateDraft.description} onChange={(event) => setTemplateDraft((draft) => ({ ...draft, description: event.target.value }))} /></FormField>
+                  <FormField id="settings-template-body" label={t("body")}><Textarea id="settings-template-body" className="settings-template-body" spellCheck={false} value={templateDraft.instruction} onChange={(event) => setTemplateDraft((draft) => ({ ...draft, instruction: event.target.value }))} /></FormField>
+                  <ControlledCheckbox id="settings-template-default" checked={templateDraft.isDefault} onChange={(checked) => setTemplateDraft((draft) => ({ ...draft, isDefault: checked }))}>{t("defaultTemplate")}</ControlledCheckbox>
+                  <div className="settings-footer"><ToolbarButton id="settings-reset-template" onClick={resetTemplates}>{t("reset")}</ToolbarButton><Button id="settings-save-template" type="button" size="lg" onClick={saveTemplate}>{t("save")}</Button></div>
+                </div>
+              </section>
+              <section className="settings-section settings-section-single" id="settings-copy-section" role="tabpanel" aria-labelledby="settings-copy-tab" hidden={settingsSection !== "copy"}>
+                <div className="settings-editor"><div><h3 className="settings-section-title">{t("copySettingsTitle")}</h3><p className="hint">{t("copySettingsDescription")}</p></div><div className="copy-option-row">
+                  <ControlledCheckbox id="include-image-prompt" className="option-toggle" checked={appSettings.includeImagePrompt} onChange={(checked) => { updateAppSettings({ includeImagePrompt: checked }); showMessage(t("copyOptionsChanged")); }}>{t("includeImagePrompt")}</ControlledCheckbox>
+                  <ControlledCheckbox id="format-automatic-transcript" className="option-toggle" checked={appSettings.formatAutomaticTranscript} onChange={(checked) => { updateAppSettings({ formatAutomaticTranscript: checked }); showMessage(t("copyOptionsChanged")); }}>{t("formatAutomaticTranscript")}</ControlledCheckbox>
+                </div><div className="display-mode-control" role="group" aria-labelledby="transcript-display-mode-label"><span className="label" id="transcript-display-mode-label">{t("transcriptDisplayModeLabel")}</span><div className="segmented-control"><ToggleGroup type="single" value={appSettings.transcriptDisplayMode} onValueChange={(value) => { if (isTranscriptDisplayMode(value)) { updateAppSettings({ transcriptDisplayMode: value }); showMessage(t("copyOptionsChanged")); } }} variant="outline" className="w-full"><ToggleGroupItem value="plain" className="flex-1">{t("plainTranscript")}</ToggleGroupItem><ToggleGroupItem value="timestamped" className="flex-1">{t("timestampedTranscript")}</ToggleGroupItem></ToggleGroup></div></div></div>
+              </section>
+              <section className="settings-section settings-section-single" id="settings-display-section" role="tabpanel" aria-labelledby="settings-display-tab" hidden={settingsSection !== "display"}>
+                <div className="settings-editor"><label className="label" htmlFor="settings-ui-language">{t("uiLanguage")}</label><NativeSelect id="settings-ui-language" className="w-full" value={uiLanguageDraft} onChange={(event) => setUiLanguageDraft(event.target.value === "en" ? "en" : "ja")}><NativeSelectOption value="ja">{t("japanese")}</NativeSelectOption><NativeSelectOption value="en">{t("english")}</NativeSelectOption></NativeSelect><p className="hint">{t("uiLanguageDescription")}</p>
+                  <ControlledCheckbox id="settings-completion-sound" checked={completionSoundDraft} onChange={setCompletionSoundDraft}>{t("completionSound")}</ControlledCheckbox>
+                  <div className="debug-log-settings"><span className="label">{t("debugLog")}</span><p className="hint">{t("debugLogDescription")}</p><ToolbarButton id="settings-open-debug-log" onClick={() => void loadDebugLog()}>{debugLog ? t("refreshDebugLog") : t("showDebugLog")}</ToolbarButton><div className="debug-log-viewer" id="settings-debug-log-viewer" hidden={!debugLog}>{debugLog ? <><span className="debug-log-path-label">{t("debugLogPath")}</span><code id="settings-debug-log-path">{debugLog.path}</code><Textarea id="settings-debug-log-content" className="debug-log-content" spellCheck={false} readOnly value={debugLog.content.trim() || t("debugLogEmpty")} /></> : null}</div></div>
+                  <div className="settings-footer"><Button id="settings-save-display" type="button" size="lg" onClick={saveDisplaySettings}>{t("save")}</Button></div>
+                </div>
+              </section>
+            </div>
+          </Tabs>
+        </section>
+      </PersistentDialog>
+
+      <PersistentDialog id="follow-up-modal" open={followUpOpen} onClose={() => { setFollowUpOpen(false); setFollowUpContext(null); }} className="follow-up-dialog-content" titleId="follow-up-title">
+        <section className="follow-up-panel"><div className="settings-header"><div><p className="eyebrow">Codex</p><h2 id="follow-up-title">{t("followUpTitle")}</h2></div><ToolbarButton id="follow-up-close" onClick={() => setFollowUpOpen(false)}>{t("followUpCancel")}</ToolbarButton></div><div className="follow-up-body"><FormField id="follow-up-question" label={t("followUpLabel")}><Textarea ref={followUpRef} id="follow-up-question" className="follow-up-question" spellCheck placeholder={t("followUpPlaceholder")} value={followUpQuestion} onChange={(event) => setFollowUpQuestion(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void submitFollowUp(); } }} /></FormField><div className="settings-footer"><Button id="follow-up-submit" type="button" size="lg" onClick={() => void submitFollowUp()}>{t("followUpSubmit")}</Button></div></div></section>
+      </PersistentDialog>
+    </section>
+  );
 }
 
-async function checkCaptionCandidates(url: string) {
-  const requestToken = (captionRequestToken += 1);
-  transcriptRequestToken += 1;
-  lastCaptionCheckUrl = url;
-  setCaptionLoading(true);
-  clearResult();
+function SectionMarker({ index, label }: { index: string; label: string }) {
+  return <div className="section-marker" aria-hidden="true"><span className="section-number">{index}</span><span className="section-name">{label}</span><span className="section-line" /></div>;
+}
 
+function MetaItem({ label, value }: { label: string; value: string }) {
+  return <div className="meta-summary-item"><span className="label">{label}</span><strong>{value}</strong></div>;
+}
+
+function ToolbarButton({ id, children, disabled, onClick }: { id: string; children: React.ReactNode; disabled?: boolean; onClick: () => void }) {
+  return <Button id={id} type="button" variant="outline" size="sm" disabled={disabled} onClick={onClick}>{children}</Button>;
+}
+
+function FormField({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
+  return <Field><FieldLabel htmlFor={id}>{label}</FieldLabel>{children}</Field>;
+}
+
+function ControlledCheckbox({ id, checked, onChange, children, className = "default-template-toggle" }: { id: string; checked: boolean; onChange: (checked: boolean) => void; children: React.ReactNode; className?: string }) {
+  return <label className={className} htmlFor={`${id}-control`}><Checkbox id={`${id}-control`} aria-labelledby={`${id}-label`} checked={checked} onCheckedChange={(value) => onChange(value === true)} /><span id={`${id}-label`}>{children}</span></label>;
+}
+
+function PersistentDialog({ id, open, onClose, className, titleId, children }: { id: string; open: boolean; onClose: () => void; className: string; titleId: string; children: React.ReactNode }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+  return <dialog ref={dialogRef} id={id} data-state={open ? "open" : "closed"} className={className} aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); onClose(); }} onPointerDownCapture={(event) => { if (event.target !== event.currentTarget) return; const bounds = event.currentTarget.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose(); }}>{children}</dialog>;
+}
+
+function loadAppSettings(): AppSettings {
+  const fallback: AppSettings = { uiLanguage: "ja", includeImagePrompt: true, formatAutomaticTranscript: true, transcriptDisplayMode: "plain", completionSoundEnabled: true };
   try {
-    const payload = await invokeBackend<CaptionListSuccess>("list_captions", { url });
-
-    if (requestToken !== captionRequestToken) {
-      return;
-    }
-
-    latestCaptionList = payload;
-    selectedCaption = payload.captions[0] ?? null;
-    title.textContent = payload.title || t("transcriptTitle");
-    renderVideoPreview(payload.title, payload.thumbnailUrl);
-    videoDuration.textContent = payload.duration || "-";
-    renderCanonicalUrl(payload.webpageUrl);
-    viewCount.textContent = formatCount(payload.viewCount);
-    renderCaptionOptions(payload.captions);
-    askCodexButton.disabled = !selectedCaption;
-    updateSelectedLanguage();
-    updateCaptionSource();
-
-    if (!selectedCaption) {
-      showMessage(t("noCaptions"));
-      return;
-    }
-
-    if (payload.captions.length === 1) {
-      showMessage(t("fetchingTranscript"));
-      const transcript = await fetchSelectedTranscript({ copyAfterFetch: false });
-      if (requestToken === captionRequestToken && transcript) {
-        await askCodexWithTranscript(transcript);
-      }
-      return;
-    }
-
-    showMessage(t("chooseCaption"));
-  } catch (error) {
-    if (requestToken !== captionRequestToken) {
-      return;
-    }
-
-    showError(formatInvokeError(error, t("listCaptionsFailed")));
-    lastCaptionCheckUrl = "";
-  } finally {
-    if (requestToken === captionRequestToken) {
-      setCaptionLoading(false);
-    }
+    const rawValue = localStorage.getItem(appSettingsStorageKey);
+    if (!rawValue) return fallback;
+    const parsed = JSON.parse(rawValue) as StoredAppSettings;
+    return {
+      uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja",
+      includeImagePrompt: parsed.includeImagePrompt !== false,
+      formatAutomaticTranscript: parsed.formatAutomaticTranscript !== false,
+      transcriptDisplayMode: isTranscriptDisplayMode(parsed.transcriptDisplayMode) ? parsed.transcriptDisplayMode : "plain",
+      completionSoundEnabled: parsed.completionSoundEnabled !== false
+    };
+  } catch {
+    return fallback;
   }
 }
 
-function scheduleCaptionAutoCheck() {
-  if (captionAutoCheckTimer !== undefined) {
-    window.clearTimeout(captionAutoCheckTimer);
+function loadPromptSettings(): PromptSettings {
+  const fallback = createDefaultPromptSettings();
+  try {
+    const rawValue = localStorage.getItem(promptSettingsStorageKey);
+    if (!rawValue) return fallback;
+    const parsed = JSON.parse(rawValue) as Partial<PromptSettings>;
+    const templates = Array.isArray(parsed.templates) ? parsed.templates.map(normalizePromptTemplate).filter((template): template is PromptTemplate => Boolean(template)) : [];
+    if (templates.length === 0) return fallback;
+    const defaultTemplateId = typeof parsed.defaultTemplateId === "string" && templates.some((template) => template.id === parsed.defaultTemplateId) ? parsed.defaultTemplateId : templates[0].id;
+    return { defaultTemplateId, templates };
+  } catch {
+    return fallback;
   }
-
-  captionAutoCheckTimer = window.setTimeout(() => {
-    captionAutoCheckTimer = undefined;
-    const url = urlInput.value.trim();
-
-    if (!isLikelyYoutubeUrl(url) || url === lastCaptionCheckUrl) {
-      return;
-    }
-
-    void checkCaptionCandidates(url);
-  }, 450);
 }
 
-function clearResult() {
-  latestCaptionList = null;
-  selectedCaption = null;
-  flushSync(() => captionListRoot.render(null));
-  captionCount.textContent = t("captionCount", 0);
-  captionPanel.hidden = true;
-  title.textContent = t("transcriptTitle");
-  renderVideoPreview();
-  language.textContent = "-";
-  videoDuration.textContent = "-";
-  renderCanonicalUrl(undefined);
-  viewCount.textContent = "-";
-  updateCaptionSource();
-  clearTranscript();
-  message.classList.remove("error");
-  message.hidden = true;
+function loadCodexHistory(): CodexHistoryEntry[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(codexHistoryStorageKey) ?? "[]");
+    return Array.isArray(parsed) ? parsed.map(normalizeCodexHistoryEntry).filter((entry): entry is CodexHistoryEntry => Boolean(entry)).slice(0, codexHistoryLimit) : [];
+  } catch {
+    return [];
+  }
 }
 
-function clearTranscript() {
-  latestTranscript = null;
-  latestCodexAnswer = "";
-  latestCodexQuestionKind = "initial";
-  latestCodexQuestionText = "";
-  latestCodexSelectedExcerpt = "";
-  latestCodexAnswerContext = null;
-  pendingCodexRequest = null;
-  isStartingCodexRequest = false;
-  codexRequestToken += 1;
-  stopCodexPolling();
-  charCount.textContent = "0";
-  askCodexButton.disabled = !selectedCaption;
-  isTranscriptSearchExpanded = false;
-  transcriptSearchInput.value = "";
-  latestSelectedOutputText = "";
-  renderTranscriptSearch();
-  renderCodexControls();
-  renderOutput();
+function createDefaultPromptSettings(): PromptSettings {
+  return { defaultTemplateId: defaultPromptTemplateId, templates: defaultPromptTemplates.map((template) => ({ ...template })) };
 }
 
-function showError(text: string) {
-  latestTranscript = null;
-  showMessage(text, true);
-  askCodexButton.disabled = true;
-  renderOutput();
+function storePromptSettings(settings: PromptSettings) {
+  localStorage.setItem(promptSettingsStorageKey, JSON.stringify(settings));
 }
 
-function showMessage(text: string, isError = false) {
-  message.textContent = text;
-  message.classList.toggle("error", isError);
-  message.hidden = !text.trim();
+function normalizePromptTemplate(value: unknown): PromptTemplate | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<PromptTemplate>;
+  if (typeof candidate.id !== "string" || typeof candidate.label !== "string" || typeof candidate.description !== "string" || typeof candidate.instruction !== "string") return null;
+  return { id: candidate.id, label: candidate.label, description: candidate.description, instruction: candidate.instruction };
 }
 
-function appendDebugLog(event: string, details: Record<string, unknown>) {
-  void invokeBackend("append_debug_log", { entry: { event, details } }).catch(() => {
-    // Debug logging must never block the primary workflow.
-  });
+function normalizeCodexHistoryEntry(value: unknown): CodexHistoryEntry | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<CodexHistoryEntry>;
+  if (typeof candidate.id !== "string" || typeof candidate.createdAt !== "string" || typeof candidate.videoId !== "string" || typeof candidate.title !== "string" || typeof candidate.url !== "string" || typeof candidate.language !== "string" || !matchesCaptionSource(candidate.source) || typeof candidate.templateId !== "string" || typeof candidate.questionKind !== "string" || typeof candidate.questionText !== "string" || typeof candidate.selectedExcerpt !== "string" || typeof candidate.answerMarkdown !== "string") return null;
+  return { ...(candidate as CodexHistoryEntry), answerMarkdown: normalizeCodexAnswerMarkdown(candidate.answerMarkdown) };
+}
+
+function toTemplateDraft(settings: PromptSettings, id: string): TemplateDraft {
+  const template = settings.templates.find((item) => item.id === id) ?? settings.templates[0] ?? defaultPromptTemplates[0];
+  return { ...template, isDefault: template.id === settings.defaultTemplateId };
+}
+
+function resolveTemplateId(settings: PromptSettings, id: string) {
+  return settings.templates.some((template) => template.id === id) ? id : settings.defaultTemplateId;
+}
+
+function normalizeSearchText(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+function truncateSearchResult(value: string) {
+  const normalized = normalizeTranscriptSegment(value);
+  return normalized.length > 160 ? `${normalized.slice(0, 160)}...` : normalized;
 }
 
 function truncateForLog(value: string, maxLength: number) {
@@ -1304,1226 +1437,64 @@ function truncateForLog(value: string, maxLength: number) {
 }
 
 function formatInvokeError(error: unknown, fallback: string) {
-  let message = "";
-
-  if (typeof error === "string" && error.trim()) {
-    message = error;
-  } else if (error instanceof Error && error.message.trim()) {
-    message = error.message;
-  } else if (typeof error === "object" && error && "error" in error) {
-    const value = (error as ApiFailure).error;
-    message = value || "";
-  }
-
-  if (!message) {
-    message = fallback;
-  }
-
-  if (message.includes("yt-dlp") && !message.includes("brew install yt-dlp")) {
-    return `${message}\n${t("ytDlpInstallHint")}`;
-  }
-
-  return message;
-}
-
-function updateSelectedLanguage() {
-  language.textContent = selectedCaption ? formatCaptionLabel(selectedCaption) : "-";
-}
-
-function updateCaptionSource() {
-  const source = latestTranscript?.source ?? selectedCaption?.source;
-  captionSource.textContent = source ? formatCaptionSource(source) : "-";
-}
-
-function renderCanonicalUrl(url: string | undefined) {
-  if (!url) {
-    canonicalUrl.textContent = "-";
-    return;
-  }
-
-  canonicalUrl.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(t("canonicalUrlLink"))}</a>`;
-}
-
-canonicalUrl.addEventListener("click", async (event) => {
-  const target = event.target;
-
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-
-  const link = target.closest<HTMLAnchorElement>("a[href]");
-
-  if (!link) {
-    return;
-  }
-
-  event.preventDefault();
-  await openTimestampUrl(link.href);
-});
-
-function formatCount(value: number | undefined) {
-  return typeof value === "number"
-    ? value.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US")
-    : "-";
-}
-
-function formatCaptionLabel(caption: CaptionOption) {
-  return `${caption.language} (${formatCaptionSource(caption.source)})`;
-}
-
-function formatCaptionSource(source: CaptionSource) {
-  if (source === "manual") {
-    return t("manualCaption");
-  }
-
-  if (source === "kanary") {
-    return t("kanaryTranscript");
-  }
-
-  return t("automaticCaption");
-}
-
-async function copyTranscriptToClipboard(transcript: TranscriptSuccess, template: PromptTemplate) {
-  const clipboardText = buildAnalysisPrompt(transcript, template);
-
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(clipboardText);
-  } else {
-    copyTextWithSelectionFallback(clipboardText);
-  }
-
-  showMessage(t("copiedWithPrompt", template.label));
-}
-
-function setOutputMode(mode: CodexOutputMode, syncTabs = true) {
-  outputMode = mode;
-  if (syncTabs) {
-    document.dispatchEvent(new CustomEvent("ui:output-mode-request", { detail: mode }));
-  }
-  renderOutput();
-}
-
-function renderOutput() {
-  const renderStartedAt = performance.now();
-  const isMarkdownOutput = outputMode === "codexAnswer";
-  output.hidden = isMarkdownOutput;
-  codexAnswerOutput.hidden = !isMarkdownOutput;
-  codexToolbar.hidden = !isMarkdownOutput;
-  outputTabDivider.hidden = !isMarkdownOutput;
-
-  if (!latestTranscript) {
-    output.value = "";
-    codexAnswerOutput.innerHTML = isMarkdownOutput ? renderCodexMarkdown(latestCodexAnswer) : "";
-    resizeTextOutput();
-    renderCodexControls();
-    logRenderOutput(renderStartedAt);
-    return;
-  }
-
-  if (outputMode === "copyPrompt") {
-    output.value = buildAnalysisPrompt(latestTranscript, getSelectedPromptTemplate());
-    codexAnswerOutput.innerHTML = "";
-    resizeTextOutput();
-    logRenderOutput(renderStartedAt);
-    return;
-  }
-
-  if (outputMode === "codexAnswer") {
-    output.value = "";
-    codexAnswerOutput.innerHTML = renderCodexMarkdown(latestCodexAnswer);
-    resizeTextOutput();
-    renderCodexControls();
-    logRenderOutput(renderStartedAt);
-    return;
-  }
-
-  codexAnswerOutput.innerHTML = "";
-  output.value = getTranscriptTextForDisplay(latestTranscript);
-  resizeTextOutput();
-  renderCodexControls();
-  logRenderOutput(renderStartedAt);
-}
-
-function resizeTextOutput() {
-  if (output.hidden) {
-    return;
-  }
-
-  output.style.height = "auto";
-  output.style.height = `${output.scrollHeight}px`;
-}
-
-function logRenderOutput(renderStartedAt: number) {
-  appendDebugLog("frontend.output.rendered", {
-    mode: outputMode,
-    elapsedMs: Math.round(performance.now() - renderStartedAt),
-    transcriptChars: latestTranscript?.text.length ?? 0,
-    answerChars: latestCodexAnswer.length
-  });
-}
-
-function renderCodexMarkdown(markdown: string) {
-  const timestampBaseUrl = getTimestampBaseUrl();
-  if (
-    codexMarkdownCache &&
-    codexMarkdownCache.markdown === markdown &&
-    codexMarkdownCache.timestampBaseUrl === timestampBaseUrl
-  ) {
-    return codexMarkdownCache.html;
-  }
-
-  codexMarkdownCache = {
-    markdown,
-    timestampBaseUrl,
-    html: renderMarkdownOutput(markdown, { buildTimestampUrl })
-  };
-  return codexMarkdownCache.html;
-}
-
-function copyTextWithSelectionFallback(text: string) {
-  const clipboardBuffer = document.createElement("textarea");
-  clipboardBuffer.value = text;
-  clipboardBuffer.setAttribute("readonly", "");
-  clipboardBuffer.style.position = "fixed";
-  clipboardBuffer.style.inset = "0 auto auto 0";
-  clipboardBuffer.style.opacity = "0";
-  document.body.append(clipboardBuffer);
-  clipboardBuffer.focus();
-  clipboardBuffer.select();
-  document.execCommand("copy");
-  clipboardBuffer.remove();
-}
-
-async function startCodexRequest(
-  prompt: string,
-  options: {
-    questionKind: CodexQuestionKind;
-    questionText: string;
-    selectedExcerpt: string;
-    templateId: string;
-    generateImage: boolean;
-    answerContext: CodexAnswerContext | null;
-  }
-) {
-  if (pendingCodexRequest || isStartingCodexRequest) {
-    return;
-  }
-
-  primeCompletionAudio();
-  stopCodexPolling();
-  const token = codexRequestToken + 1;
-  codexRequestToken = token;
-  isStartingCodexRequest = true;
-  latestCodexAnswer = "";
-  latestCodexAnswerContext = options.answerContext;
-  setOutputMode("codexAnswer");
-  setCodexLoading(true);
-  showMessage(t("askingCodex"));
-
-  try {
-    const started = await invokeBackend<CodexJobStartSuccess>("start_codex_request", {
-      prompt,
-      generateImage: options.generateImage
-    });
-    if (token !== codexRequestToken) {
-      isStartingCodexRequest = false;
-      setCodexLoading(false);
-      void invokeBackend("cancel_codex_request", { jobId: started.jobId });
-      return;
-    }
-
-    pendingCodexRequest = {
-      jobId: started.jobId,
-      token,
-      prompt,
-      questionKind: options.questionKind,
-      questionText: options.questionText,
-      selectedExcerpt: options.selectedExcerpt,
-      templateId: options.templateId,
-      answerContext: options.answerContext
-    };
-    isStartingCodexRequest = false;
-    setCodexLoading(true);
-    pollCodexRequest(started.jobId, token);
-  } catch (error) {
-    if (token !== codexRequestToken) {
-      isStartingCodexRequest = false;
-      setCodexLoading(false);
-      return;
-    }
-
-    isStartingCodexRequest = false;
-    latestCodexAnswer = formatInvokeError(error, t("codexAnswerFailed"));
-    pendingCodexRequest = null;
-    setCodexLoading(false);
-    renderOutput();
-    showMessage(latestCodexAnswer, true);
-  }
-}
-
-function pollCodexRequest(jobId: string, token: number) {
-  stopCodexPolling();
-  codexPollTimer = window.setTimeout(async () => {
-    if (!pendingCodexRequest || pendingCodexRequest.jobId !== jobId || pendingCodexRequest.token !== token) {
-      return;
-    }
-
-    try {
-      const status = await invokeBackend<CodexJobStatus>("get_codex_request", { jobId });
-      handleCodexJobStatus(status, token);
-    } catch (error) {
-      latestCodexAnswer = formatInvokeError(error, t("codexAnswerFailed"));
-      pendingCodexRequest = null;
-      setCodexLoading(false);
-      renderOutput();
-      showMessage(latestCodexAnswer, true);
-    }
-  }, codexPollIntervalMs);
-}
-
-function handleCodexJobStatus(status: CodexJobStatus, token: number) {
-  if (!pendingCodexRequest || pendingCodexRequest.token !== token) {
-    return;
-  }
-
-  if (status.status === "running") {
-    pollCodexRequest(pendingCodexRequest.jobId, token);
-    return;
-  }
-
-  const completedRequest = pendingCodexRequest;
-  pendingCodexRequest = null;
-  stopCodexPolling();
-  setCodexLoading(false);
-
-  if (status.status === "completed" && status.answer) {
-    latestCodexAnswer = normalizeCodexAnswerMarkdown(status.answer);
-    latestCodexQuestionKind = completedRequest.questionKind;
-    latestCodexQuestionText = completedRequest.questionText;
-    latestCodexSelectedExcerpt = completedRequest.selectedExcerpt;
-    latestCodexAnswerContext = completedRequest.answerContext;
-    saveCodexHistoryEntry(completedRequest, latestCodexAnswer);
-    renderOutput();
-    playCompletionSound();
-    return;
-  }
-
-  const fallback = status.status === "cancelled" ? t("codexCancelled") : t("codexAnswerFailed");
-  latestCodexAnswer = status.error || fallback;
-  renderOutput();
-  showMessage(latestCodexAnswer, status.status !== "cancelled");
-}
-
-function stopCodexPolling() {
-  if (codexPollTimer !== undefined) {
-    window.clearTimeout(codexPollTimer);
-    codexPollTimer = undefined;
-  }
-}
-
-async function cancelActiveCodexRequest() {
-  if (!pendingCodexRequest) {
-    return;
-  }
-
-  const request = pendingCodexRequest;
-  pendingCodexRequest = null;
-  codexRequestToken += 1;
-  stopCodexPolling();
-
-  try {
-    await invokeBackend<CodexJobStatus>("cancel_codex_request", { jobId: request.jobId });
-  } catch {
-    // The local UI should still recover even if the process already exited.
-  }
-
-  latestCodexAnswer = t("codexCancelled");
-  setCodexLoading(false);
-  renderOutput();
-  showMessage(t("codexCancelled"));
-}
-
-async function copyLatestCodexAnswer() {
-  const answerText = getCodexAnswerTextForCopy(latestCodexAnswer);
-
-  if (!answerText) {
-    showMessage(t("codexNoAnswer"), true);
-    return;
-  }
-
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(answerText);
-    } else {
-      copyTextWithSelectionFallback(answerText);
-    }
-    showMessage(t("codexAnswerCopied"));
-  } catch {
-    showMessage(t("copyFailed"), true);
-  }
-}
-
-function saveLatestCodexAnswerAsMarkdown() {
-  if (!latestCodexAnswer.trim()) {
-    showMessage(t("codexNoAnswer"), true);
-    return;
-  }
-
-  const markdown = buildCodexAnswerMarkdown();
-  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  const context = getActiveCodexAnswerContext();
-  link.href = url;
-  link.download = `${slugifyFileName(context?.title || "youtube-ai-brief")}.md`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function buildCodexAnswerMarkdown() {
-  const context = getActiveCodexAnswerContext();
-  const metadata = context
-    ? [
-        `# ${context.title || context.videoId}`,
-        "",
-        `- YouTube URL: ${context.url}`,
-        `- 動画ID: ${context.videoId}`,
-        `- 字幕: ${context.language} (${formatCaptionSource(context.source)})`,
-        latestCodexQuestionText ? `- 質問: ${latestCodexQuestionText}` : null,
-        ""
-      ].filter(Boolean)
-    : [`# ${appName}`, ""];
-
-  return [...metadata, latestCodexAnswer.trim(), ""].join("\n");
-}
-
-async function rerunLatestCodexRequest() {
-  if (!latestTranscript) {
-    showError(t("codexPromptRequired"));
-    return;
-  }
-
-  const template = getSelectedPromptTemplate();
-  const prompt =
-    latestCodexQuestionKind === "followup" || latestCodexQuestionKind === "selection"
-      ? buildFollowUpPrompt(latestCodexQuestionText || template.label, latestCodexSelectedExcerpt)
-      : buildAnalysisPrompt(latestTranscript, template, { includeImageInstruction: false });
-
-  await startCodexRequest(prompt, {
-    questionKind: "rerun",
-    questionText: latestCodexQuestionText || template.label,
-    selectedExcerpt: latestCodexSelectedExcerpt,
-    templateId: template.id,
-    generateImage: appSettings.includeImagePrompt,
-    answerContext: getTranscriptAnswerContext(latestTranscript)
-  });
-}
-
-function openFollowUpModal(kind: CodexQuestionKind, selectedExcerpt: string) {
-  if (!latestTranscript && !latestCodexAnswer.trim()) {
-    showError(t("codexPromptRequired"));
-    return;
-  }
-
-  followUpContext = { kind, selectedExcerpt };
-  followUpQuestion.value = "";
-  document.dispatchEvent(new CustomEvent("ui:follow-up-dialog-request", { detail: true }));
-  requestAnimationFrame(() => followUpQuestion.focus());
-}
-
-function closeFollowUpModal() {
-  document.dispatchEvent(new CustomEvent("ui:follow-up-dialog-request", { detail: false }));
-  followUpContext = null;
-}
-
-function isDialogOpen(dialog: HTMLElement) {
-  return dialog.dataset.state === "open";
-}
-
-async function submitFollowUpQuestion() {
-  const question = followUpQuestion.value.trim();
-  if (!question) {
-    showMessage(t("followUpRequired"), true);
-    return;
-  }
-
-  const context = followUpContext ?? { kind: "followup" as CodexQuestionKind, selectedExcerpt: "" };
-  closeFollowUpModal();
-  const selectedExcerpt = context.selectedExcerpt;
-  const prompt = buildFollowUpPrompt(question, selectedExcerpt);
-  await startCodexRequest(prompt, {
-    questionKind: context.kind,
-    questionText: question,
-    selectedExcerpt,
-    templateId: getSelectedPromptTemplate().id,
-    generateImage: false,
-    answerContext: getActiveCodexAnswerContext()
-  });
-}
-
-function buildFollowUpPrompt(question: string, selectedExcerpt: string) {
-  return buildFollowUpPromptText({
-    question,
-    selectedExcerpt,
-    transcript: latestTranscript,
-    context: getActiveCodexAnswerContext(),
-    sourceAnswer: latestCodexAnswer.trim(),
-    fallbackUrl: urlInput.value.trim(),
-    formatCaptionSource
-  });
-}
-
-function renderCodexControls() {
-  const hasAnswer = latestCodexAnswer.trim().length > 0;
-  const isRunning = Boolean(pendingCodexRequest) || isStartingCodexRequest;
-  copyCodexAnswerButton.disabled = !hasAnswer || isRunning;
-  saveCodexMarkdownButton.disabled = !hasAnswer || isRunning;
-  rerunCodexAnswerButton.disabled = !latestTranscript || latestCodexQuestionKind === "history" || isRunning;
-  followUpCodexAnswerButton.disabled = !hasAnswer || isRunning;
-  askSelectionCodexButton.disabled = isRunning || (!latestTranscript && !hasAnswer);
-  cancelCodexAnswerButton.hidden = !pendingCodexRequest;
-}
-
-function getSelectedOutputText() {
-  if (outputMode !== "codexAnswer" && !output.hidden) {
-    const start = output.selectionStart ?? 0;
-    const end = output.selectionEnd ?? 0;
-    const selectedText = output.value.slice(Math.min(start, end), Math.max(start, end)).trim();
-    latestSelectedOutputText = selectedText || latestSelectedOutputText;
-    return selectedText || latestSelectedOutputText;
-  }
-
-  const selection = window.getSelection();
-  const selectedText = selection?.toString().trim() ?? "";
-  if (selectedText && codexAnswerOutput.contains(selection?.anchorNode ?? null)) {
-    latestSelectedOutputText = selectedText;
-    return selectedText;
-  }
-
-  return latestSelectedOutputText;
-}
-
-function cacheSelectedOutputText() {
-  const selectedText = readSelectedOutputText();
-  if (selectedText) {
-    latestSelectedOutputText = selectedText;
-  }
-}
-
-function readSelectedOutputText() {
-  if (!output.hidden) {
-    const start = output.selectionStart ?? 0;
-    const end = output.selectionEnd ?? 0;
-    return output.value.slice(Math.min(start, end), Math.max(start, end)).trim();
-  }
-
-  const selection = window.getSelection();
-  const selectedText = selection?.toString().trim() ?? "";
-  if (!selectedText || !codexAnswerOutput.contains(selection?.anchorNode ?? null)) {
-    return "";
-  }
-
-  return selectedText;
-}
-
-function saveCodexHistoryEntry(request: PendingCodexRequest, answerMarkdown: string) {
-  const context = request.answerContext ?? (latestTranscript ? getTranscriptAnswerContext(latestTranscript) : null);
-  if (!context) {
-    return;
-  }
-
-  const entry: CodexHistoryEntry = {
-    id: `history-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    createdAt: new Date().toISOString(),
-    videoId: context.videoId,
-    title: context.title || context.videoId,
-    url: context.url,
-    language: context.language,
-    source: context.source,
-    templateId: request.templateId,
-    questionKind: request.questionKind,
-    questionText: request.questionText,
-    selectedExcerpt: request.selectedExcerpt,
-    answerMarkdown
-  };
-
-  const nextHistory = [entry, ...codexHistory.filter((item) => item.id !== entry.id)].slice(0, codexHistoryLimit);
-
-  try {
-    localStorage.setItem(codexHistoryStorageKey, JSON.stringify(nextHistory));
-    codexHistory = nextHistory;
-  } catch {
-    // History is best-effort; a full or unavailable localStorage must not discard the completed answer.
-  }
-
-  renderCodexHistory();
-}
-
-function renderCodexHistory() {
-  codexHistoryPanel.hidden = codexHistory.length === 0;
-  codexHistoryCount.textContent = codexHistory.length.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
-
-  if (codexHistory.length === 0) {
-    flushSync(() => codexHistoryListRoot.render(<HistoryList entries={[]} emptyLabel={t("codexHistoryEmpty")} />));
-    return;
-  }
-
-  flushSync(() => {
-    codexHistoryListRoot.render(
-      <HistoryList
-        entries={codexHistory.map((entry) => {
-          const date = new Date(entry.createdAt).toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
-          const question = entry.questionText ? ` / ${entry.questionText}` : "";
-          return {
-            id: entry.id,
-            metadata: `${date} / ${formatCaptionSource(entry.source)}${question}`,
-            title: entry.title
-          };
-        })}
-        emptyLabel={t("codexHistoryEmpty")}
-      />
-    );
-  });
-}
-
-function restoreCodexHistoryEntry(historyId: string | undefined) {
-  const entry = codexHistory.find((item) => item.id === historyId);
-  if (!entry) {
-    return;
-  }
-
-  latestCodexAnswer = normalizeCodexAnswerMarkdown(entry.answerMarkdown);
-  latestCodexQuestionKind = "history";
-  latestCodexQuestionText = `${t("historyRestoredPrefix")}: ${entry.questionText}`;
-  latestCodexSelectedExcerpt = entry.selectedExcerpt;
-  latestCodexAnswerContext = getHistoryAnswerContext(entry);
-  setOutputMode("codexAnswer");
-  renderOutput();
-  showMessage(t("codexHistoryRestored"));
-}
-
-function clearCodexHistory() {
-  if (codexHistory.length === 0) {
-    return;
-  }
-
-  codexHistory = [];
-  localStorage.removeItem(codexHistoryStorageKey);
-  renderCodexHistory();
-  showMessage(t("codexHistoryCleared"));
-}
-
-function getTranscriptAnswerContext(transcript: TranscriptSuccess): CodexAnswerContext {
-  return {
-    videoId: transcript.videoId,
-    title: transcript.title || transcript.videoId,
-    url: transcript.webpageUrl || transcript.sourcePath || urlInput.value.trim(),
-    language: transcript.language,
-    source: transcript.source
-  };
-}
-
-function getHistoryAnswerContext(entry: CodexHistoryEntry): CodexAnswerContext {
-  return {
-    videoId: entry.videoId,
-    title: entry.title || entry.videoId,
-    url: entry.url,
-    language: entry.language,
-    source: entry.source
-  };
-}
-
-function getActiveCodexAnswerContext() {
-  return latestCodexAnswerContext ?? (latestTranscript ? getTranscriptAnswerContext(latestTranscript) : null);
-}
-
-function loadCodexHistory(): CodexHistoryEntry[] {
-  try {
-    const rawValue = localStorage.getItem(codexHistoryStorageKey);
-    if (!rawValue) {
-      return [];
-    }
-
-    const parsed = JSON.parse(rawValue);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .map(normalizeCodexHistoryEntry)
-      .filter((entry): entry is CodexHistoryEntry => Boolean(entry))
-      .slice(0, codexHistoryLimit);
-  } catch {
-    return [];
-  }
-}
-
-function normalizeCodexHistoryEntry(value: unknown): CodexHistoryEntry | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as Partial<CodexHistoryEntry>;
-  if (
-    typeof candidate.id !== "string" ||
-    typeof candidate.createdAt !== "string" ||
-    typeof candidate.videoId !== "string" ||
-    typeof candidate.title !== "string" ||
-    typeof candidate.url !== "string" ||
-    typeof candidate.language !== "string" ||
-    (candidate.source !== "manual" && candidate.source !== "automatic" && candidate.source !== "kanary") ||
-    typeof candidate.templateId !== "string" ||
-    typeof candidate.questionKind !== "string" ||
-    typeof candidate.questionText !== "string" ||
-    typeof candidate.selectedExcerpt !== "string" ||
-    typeof candidate.answerMarkdown !== "string"
-  ) {
-    return null;
-  }
-
-  return {
-    ...(candidate as CodexHistoryEntry),
-    answerMarkdown: normalizeCodexAnswerMarkdown(candidate.answerMarkdown)
-  };
-}
-
-function getTranscriptTextForDisplay(transcript: TranscriptSuccess) {
-  const cache = getTranscriptDerivedCache(transcript);
-  if (cache.displayText === undefined) {
-    cache.displayText = buildTranscriptTextForDisplay(transcript, appSettings);
-  }
-  return cache.displayText;
-}
-
-function getSearchableTranscriptSegments(transcript: TranscriptSuccess) {
-  const cache = getTranscriptDerivedCache(transcript);
-  if (cache.searchableSegments === undefined) {
-    cache.searchableSegments = getSearchableSegments(transcript, appSettings);
-  }
-  return cache.searchableSegments;
-}
-
-function getSearchableTranscriptIndex(transcript: TranscriptSuccess) {
-  const cache = getTranscriptDerivedCache(transcript);
-  if (cache.searchableIndex === undefined) {
-    cache.searchableIndex = getSearchableTranscriptSegments(transcript).map((segment) => ({
-      segment,
-      normalizedText: normalizeSearchText(segment.text)
-    }));
-  }
-  return cache.searchableIndex;
-}
-
-function getTranscriptDerivedCache(transcript: TranscriptSuccess) {
-  if (
-    transcriptDerivedCache &&
-    transcriptDerivedCache.transcript === transcript &&
-    transcriptDerivedCache.formatAutomaticTranscript === appSettings.formatAutomaticTranscript &&
-    transcriptDerivedCache.transcriptDisplayMode === appSettings.transcriptDisplayMode
-  ) {
-    return transcriptDerivedCache;
-  }
-
-  transcriptDerivedCache = {
-    transcript,
-    formatAutomaticTranscript: appSettings.formatAutomaticTranscript,
-    transcriptDisplayMode: appSettings.transcriptDisplayMode
-  };
-  return transcriptDerivedCache;
-}
-
-function updateTranscriptCharacterCount() {
-  const count = latestTranscript ? getTranscriptTextForDisplay(latestTranscript).length : 0;
-  charCount.textContent = count.toLocaleString(appSettings.uiLanguage === "ja" ? "ja-JP" : "en-US");
-}
-
-function renderTranscriptDisplayMode() {
-  transcriptDisplayModeInputs.forEach((input) => {
-    input.checked = input.value === appSettings.transcriptDisplayMode;
-  });
-  document.dispatchEvent(new CustomEvent("ui:display-mode-request", { detail: appSettings.transcriptDisplayMode }));
-}
-
-function isTranscriptDisplayMode(value: unknown): value is TranscriptDisplayMode {
-  return value === "plain" || value === "timestamped";
-}
-
-function renderTranscriptSearch() {
-  const searchIndex = latestTranscript ? getSearchableTranscriptIndex(latestTranscript) : [];
-  transcriptSearchPanel.hidden = !latestTranscript || !isTranscriptSearchExpanded;
-  transcriptSearchToggle.disabled = !latestTranscript;
-  transcriptSearchToggle.setAttribute("aria-expanded", String(Boolean(latestTranscript && isTranscriptSearchExpanded)));
-  transcriptSearchInput.disabled = searchIndex.length === 0;
-
-  if (!latestTranscript) {
-    transcriptSearchCount.textContent = t("transcriptSearchDisabled");
-    flushSync(() => transcriptSearchResultsRoot.render(null));
-    return;
-  }
-
-  if (searchIndex.length === 0) {
-    transcriptSearchCount.textContent = t("transcriptSearchDisabled");
-    flushSync(() => transcriptSearchResultsRoot.render(null));
-    return;
-  }
-
-  const query = normalizeSearchText(transcriptSearchInput.value);
-
-  if (!query) {
-    transcriptSearchCount.textContent = t("transcriptSearchReady");
-    flushSync(() => transcriptSearchResultsRoot.render(null));
-    return;
-  }
-
-  const matches = searchIndex
-    .filter((entry) => entry.normalizedText.includes(query))
-    .map((entry) => entry.segment)
-    .slice(0, 50);
-
-  transcriptSearchCount.textContent =
-    matches.length === 0 ? t("transcriptSearchEmpty") : t("transcriptSearchCount", matches.length);
-  flushSync(() => {
-    transcriptSearchResultsRoot.render(
-      <SearchResults
-        results={matches.map((segment) => ({
-          startLabel: segment.startLabel,
-          text: truncateSearchResult(segment.text),
-          timestampUrl: buildTimestampUrl(segment.startSeconds)
-        }))}
-        openLabel={t("openTimestamp")}
-      />
-    );
-  });
-}
-
-function normalizeSearchText(value: string) {
-  return value.trim().toLocaleLowerCase();
-}
-
-function truncateSearchResult(text: string) {
-  const normalized = normalizeTranscriptSegment(text);
-  return normalized.length > 160 ? `${normalized.slice(0, 160)}...` : normalized;
-}
-
-async function openTimestampUrl(url: string | undefined) {
-  if (!url) {
-    return;
-  }
-
-  try {
-    await invokeBackend("open_youtube_url", { url });
-  } catch {
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-}
-
-async function openExternalUrl(url: string | undefined) {
-  if (!url) {
-    return;
-  }
-
-  try {
-    await invokeBackend("open_external_url", { url });
-  } catch {
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-}
-
-function buildAnalysisPrompt(
-  transcript: TranscriptSuccess,
-  template: PromptTemplate,
-  options: { includeImageInstruction?: boolean } = {}
-) {
-  const captionLabel = selectedCaption
-    ? formatCaptionLabel({
-        language: transcript.language,
-        name: selectedCaption.name,
-        source: transcript.source,
-        isAutoCaption: transcript.source === "automatic"
-      })
-    : `${transcript.language} (${formatCaptionSource(transcript.source)})`;
-
-  return buildAnalysisPromptText(transcript, template, {
-    includeImageInstruction: options.includeImageInstruction ?? appSettings.includeImagePrompt,
-    transcriptText: getTranscriptTextForDisplay(transcript),
-    captionLabel,
-    fallbackUrl: urlInput.value.trim(),
-    promptCreatedDate: new Date().toLocaleDateString("ja-JP", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }),
-    transcriptDisplayMode: appSettings.transcriptDisplayMode,
-    buildTimestampUrl
-  });
-}
-
-function buildTimestampUrl(startSeconds: number) {
-  return buildTimestampUrlFromBase(getTimestampBaseUrl(), startSeconds);
-}
-
-function getTimestampBaseUrl() {
-  return latestTranscript?.webpageUrl || latestCaptionList?.webpageUrl || "";
-}
-
-function renderPromptTemplates(selectedTemplateId = promptSettings.defaultTemplateId) {
-  promptTemplateSelect.innerHTML = promptSettings.templates
-    .map((template) => `<option value="${template.id}">${escapeHtml(template.label)}</option>`)
-    .join("");
-
-  promptTemplateSelect.value = resolvePromptTemplateId(selectedTemplateId);
-  updatePromptDescription();
-}
-
-function renderPromptSettings(selectedTemplateId: string) {
-  renderPromptTemplates(selectedTemplateId);
-  renderPromptSettingsList(selectedTemplateId);
-  renderPromptSettingsEditor(selectedTemplateId);
-}
-
-function updatePromptDescription() {
-  promptDescription.textContent = getSelectedPromptTemplate().description;
-}
-
-function renderAppOptions() {
-  syncCheckbox(includeImagePrompt, appSettings.includeImagePrompt);
-  syncCheckbox(formatAutomaticTranscript, appSettings.formatAutomaticTranscript);
-  syncCheckbox(settingsCompletionSound, appSettings.completionSoundEnabled);
-  renderTranscriptDisplayMode();
-}
-
-function getSelectedPromptTemplate() {
-  return (
-    promptSettings.templates.find((template) => template.id === promptTemplateSelect.value) ??
-    promptSettings.templates.find((template) => template.id === promptSettings.defaultTemplateId) ??
-    promptSettings.templates[0]
-  );
-}
-
-function getDefaultPromptTemplate() {
-  return (
-    promptSettings.templates.find((template) => template.id === promptSettings.defaultTemplateId) ??
-    promptSettings.templates[0]
-  );
-}
-
-function openPromptSettings() {
-  elementToRestoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  showSettingsSection(activeSettingsSection);
-  settingsUiLanguage.value = appSettings.uiLanguage;
-  syncCheckbox(settingsCompletionSound, appSettings.completionSoundEnabled);
-  renderPromptSettingsList(promptTemplateSelect.value || promptSettings.defaultTemplateId);
-  renderPromptSettingsEditor(settingsTemplateSelect.value || promptSettings.defaultTemplateId);
-  document.dispatchEvent(new CustomEvent("ui:settings-dialog-request", { detail: true }));
-  requestAnimationFrame(() => {
-    if (activeSettingsSection === "prompts") {
-      settingsTemplateTitle.focus();
-      settingsTemplateTitle.select();
-    } else if (activeSettingsSection === "copy") {
-      document.querySelector<HTMLButtonElement>("#include-image-prompt-control")?.focus();
-    } else {
-      settingsUiLanguage.focus();
-    }
-  });
-}
-
-function closePromptSettings() {
-  document.dispatchEvent(new CustomEvent("ui:settings-dialog-request", { detail: false }));
-  (elementToRestoreFocus ?? promptSettingsButton).focus();
-  elementToRestoreFocus = null;
-}
-
-function renderPromptSettingsList(selectedTemplateId: string) {
-  settingsTemplateSelect.innerHTML = promptSettings.templates
-    .map((template) => {
-      const defaultMark = template.id === promptSettings.defaultTemplateId ? t("defaultMark") : "";
-      return `<option value="${template.id}">${escapeHtml(template.label)}${defaultMark}</option>`;
-    })
-    .join("");
-  settingsTemplateSelect.value = resolvePromptTemplateId(selectedTemplateId);
-  settingsDeleteTemplate.disabled = promptSettings.templates.length <= 1;
-}
-
-function resolvePromptTemplateId(templateId: string) {
-  return promptSettings.templates.some((template) => template.id === templateId)
-    ? templateId
-    : promptSettings.defaultTemplateId;
-}
-
-function showSettingsSection(section: "prompts" | "copy" | "display") {
-  activeSettingsSection = section;
-  document.dispatchEvent(new CustomEvent("ui:settings-section-request", { detail: section }));
-}
-
-function applyUiLanguage() {
-  document.documentElement.lang = appSettings.uiLanguage;
-  document.title = appName;
-  settingsUiLanguage.value = appSettings.uiLanguage;
-  renderAppOptions();
-  document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
-    const key = element.dataset.i18n;
-    if (!key) {
-      return;
-    }
-    element.textContent = t(key as keyof (typeof uiText)["ja"]);
-  });
-  document.querySelectorAll<HTMLInputElement>("[data-i18n-placeholder]").forEach((element) => {
-    const key = element.dataset.i18nPlaceholder;
-    if (!key) {
-      return;
-    }
-    element.placeholder = t(key as keyof (typeof uiText)["ja"]);
-  });
-  if (!settingsDebugLogViewer.hidden) {
-    settingsOpenDebugLog.textContent = t("refreshDebugLog");
-    if (!settingsDebugLogContent.value.trim() || settingsDebugLogContent.value === uiText.ja.debugLogEmpty || settingsDebugLogContent.value === uiText.en.debugLogEmpty) {
-      settingsDebugLogContent.value = t("debugLogEmpty");
-    }
-  }
-  updatePromptDescription();
-  updateSelectedLanguage();
-  updateCaptionSource();
-  updateTranscriptCharacterCount();
-  viewCount.textContent = formatCount(latestTranscript?.viewCount ?? latestCaptionList?.viewCount);
-  renderTranscriptSearch();
-  renderCodexHistory();
-  renderOutput();
-  if (latestCaptionList) {
-    renderCaptionOptions(latestCaptionList.captions);
-  }
-  if (!latestCaptionList && !latestTranscript) {
-    title.textContent = t("transcriptTitle");
-  }
-  if (!latestCaptionList) {
-    captionCount.textContent = t("captionCount", 0);
-  }
-}
-
-function playCompletionSound() {
-  if (!appSettings.completionSoundEnabled) {
-    return;
-  }
-
-  const audioContext = getCompletionAudioContext();
-  if (!audioContext) {
-    return;
-  }
-
-  const play = () => {
-    const now = audioContext.currentTime;
-    playCompletionTone(audioContext, now, 660, 0.055);
-    playCompletionTone(audioContext, now + 0.075, 880, 0.075);
-  };
-
-  if (audioContext.state === "suspended") {
-    void audioContext
-      .resume()
-      .then(play)
-      .catch((error) => {
-        appendDebugLog("frontend.completion_sound.failed", {
-          reason: "resume",
-          message: error instanceof Error ? error.message : String(error)
-        });
-      });
-  } else {
-    play();
-  }
-}
-
-function primeCompletionAudio() {
-  if (!appSettings.completionSoundEnabled || completionAudioPrimed) {
-    return;
-  }
-
-  const audioContext = getCompletionAudioContext();
-  if (!audioContext) {
-    return;
-  }
-
-  if (audioContext.state === "suspended") {
-    void audioContext
-      .resume()
-      .then(() => {
-        completionAudioPrimed = audioContext.state === "running";
-      })
-      .catch((error) => {
-        appendDebugLog("frontend.completion_sound.prime_failed", {
-          reason: "resume",
-          message: error instanceof Error ? error.message : String(error)
-        });
-      });
-    return;
-  }
-
-  completionAudioPrimed = true;
+  if (typeof error === "string" && error.trim()) return error;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "object" && error && "error" in error) return (error as ApiFailure).error || fallback;
+  return fallback;
 }
 
-function getCompletionAudioContext() {
-  const audioContext = completionAudioContext ?? new AudioContext();
-  completionAudioContext = audioContext;
-  return audioContext;
+function appendDebugLog(event: string, details: Record<string, unknown>) {
+  void invokeBackend("append_debug_log", { entry: { event, details } }).catch(() => {});
 }
 
-function playCompletionTone(audioContext: AudioContext, startAt: number, frequency: number, duration: number) {
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
+function playCompletionTone(context: AudioContext, startAt: number, frequency: number, duration: number) {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
   oscillator.type = "sine";
   oscillator.frequency.setValueAtTime(frequency, startAt);
   gain.gain.setValueAtTime(0.0001, startAt);
   gain.gain.exponentialRampToValueAtTime(0.045, startAt + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
   oscillator.connect(gain);
-  gain.connect(audioContext.destination);
+  gain.connect(context.destination);
   oscillator.start(startAt);
   oscillator.stop(startAt + duration + 0.01);
 }
 
-function t(key: keyof (typeof uiText)["ja"], value?: string | number) {
-  const entry = uiText[appSettings.uiLanguage][key];
-  if (typeof entry === "function") {
-    return entry(value as never);
-  }
-  return entry;
+function copyTextWithSelectionFallback(text: string) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.readOnly = true;
+  textarea.style.cssText = "position:fixed;inset:0 auto auto 0;opacity:0";
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
 
-function loadAppSettings(): AppSettings {
-  const fallback: AppSettings = {
-    uiLanguage: "ja",
-    includeImagePrompt: true,
-    formatAutomaticTranscript: true,
-    transcriptDisplayMode: "plain",
-    completionSoundEnabled: true
-  };
-
-  try {
-    const rawValue = localStorage.getItem(appSettingsStorageKey);
-    if (!rawValue) {
-      return fallback;
-    }
-
-    const parsed = JSON.parse(rawValue) as StoredAppSettings;
-    const transcriptDisplayMode = isTranscriptDisplayMode(parsed.transcriptDisplayMode)
-      ? parsed.transcriptDisplayMode
-      : "plain";
-    const settings: AppSettings = {
-      uiLanguage: parsed.uiLanguage === "en" ? "en" : "ja",
-      includeImagePrompt: parsed.includeImagePrompt !== false,
-      formatAutomaticTranscript: parsed.formatAutomaticTranscript !== false,
-      transcriptDisplayMode,
-      completionSoundEnabled: parsed.completionSoundEnabled !== false
-    };
-
-    return settings;
-  } catch {
-    return fallback;
-  }
+async function copyText(text: string) {
+  if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+  else copyTextWithSelectionFallback(text);
 }
 
-function saveAppSettings() {
-  localStorage.setItem(appSettingsStorageKey, JSON.stringify(appSettings));
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
-function renderPromptSettingsEditor(templateId: string) {
-  const template = promptSettings.templates.find((item) => item.id === templateId) ?? promptSettings.templates[0];
-
-  if (!template) {
-    return;
-  }
-
-  settingsTemplateSelect.value = template.id;
-  settingsTemplateTitle.value = template.label;
-  settingsTemplateDescription.value = template.description;
-  settingsTemplateBody.value = template.instruction;
-  syncCheckbox(settingsTemplateDefault, template.id === promptSettings.defaultTemplateId);
+function isTranscriptDisplayMode(value: unknown): value is TranscriptDisplayMode {
+  return value === "plain" || value === "timestamped";
 }
 
-function syncCheckbox(input: HTMLInputElement, checked: boolean) {
-  input.checked = checked;
-  document.dispatchEvent(new CustomEvent("ui:checkbox-request", { detail: { id: input.id, checked } }));
+function isOutputMode(value: string): value is CodexOutputMode {
+  return value === "transcript" || value === "copyPrompt" || value === "codexAnswer";
 }
 
-function loadPromptSettings(): PromptSettings {
-  const fallback = createDefaultPromptSettings();
-
-  try {
-    const rawValue = localStorage.getItem(promptSettingsStorageKey);
-    if (!rawValue) {
-      return fallback;
-    }
-
-    const parsed = JSON.parse(rawValue) as Partial<PromptSettings>;
-    const templates = Array.isArray(parsed.templates)
-      ? parsed.templates
-          .map(normalizePromptTemplate)
-          .filter((template): template is PromptTemplate => Boolean(template))
-      : [];
-
-    if (templates.length === 0) {
-      return fallback;
-    }
-
-    const defaultTemplateId =
-      typeof parsed.defaultTemplateId === "string" &&
-      templates.some((template) => template.id === parsed.defaultTemplateId)
-        ? parsed.defaultTemplateId
-        : templates[0].id;
-
-    return {
-      defaultTemplateId,
-      templates
-    };
-  } catch {
-    return fallback;
-  }
+function isSettingsSection(value: string): value is "prompts" | "copy" | "display" {
+  return value === "prompts" || value === "copy" || value === "display";
 }
 
-function savePromptSettings() {
-  localStorage.setItem(promptSettingsStorageKey, JSON.stringify(promptSettings));
-}
-
-function createDefaultPromptSettings(): PromptSettings {
-  return {
-    defaultTemplateId: defaultPromptTemplateId,
-    templates: defaultPromptTemplates.map((template) => ({ ...template }))
-  };
-}
-
-function normalizePromptTemplate(value: unknown): PromptTemplate | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as Partial<PromptTemplate>;
-
-  if (
-    typeof candidate.id !== "string" ||
-    typeof candidate.label !== "string" ||
-    typeof candidate.description !== "string" ||
-    typeof candidate.instruction !== "string"
-  ) {
-    return null;
-  }
-
-  return {
-    id: candidate.id,
-    label: candidate.label,
-    description: candidate.description,
-    instruction: candidate.instruction
-  };
-}
-
-function focusUrlInput() {
-  requestAnimationFrame(() => {
-    urlInput.focus();
-    urlInput.select();
-  });
-}
-
-function clearUrlInputOnLaunch() {
-  urlInput.value = "";
-  lastCaptionCheckUrl = "";
+function matchesCaptionSource(value: unknown): value is CaptionSource {
+  return value === "manual" || value === "automatic" || value === "kanary";
 }
 
 function isLikelyYoutubeUrl(value: string) {
@@ -2535,15 +1506,6 @@ function isLikelyYoutubeUrl(value: string) {
   }
 }
 
-function isYouTubeUrl(value: string) {
-  return isLikelyYoutubeUrl(value);
-}
-
-function slugifyFileName(value: string) {
-  const slug = value
-    .trim()
-    .replace(/[\\/:*?"<>|]+/g, "")
-    .replace(/\s+/g, "-")
-    .slice(0, 80);
-  return slug || "youtube-ai-brief";
-}
+const app = document.querySelector<HTMLDivElement>("#app");
+if (!app) throw new Error("App root was not found.");
+createRoot(app).render(<App />);
