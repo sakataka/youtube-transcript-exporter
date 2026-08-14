@@ -61,19 +61,31 @@ const codexHistoryLimit = 20;
 const codexPollIntervalMs = 900;
 const defaultPromptTemplateId = "default";
 const appName = "YouTube AI Brief";
+const legacyDefaultPromptTemplate: PromptTemplate = {
+  id: "default",
+  label: "概要 + 詳細",
+  description: "動画の全体像、要点、流れ、結論を整理",
+  instruction: [
+    "以下はYouTube動画の字幕です。内容を日本語でわかりやすく整理してください。",
+    "",
+    "次の形式で回答してください。",
+    "1. この動画の概要",
+    "2. 重要なポイント",
+    "3. 話の流れの詳細",
+    "4. 結論・主張"
+  ].join("\n")
+};
 const defaultPromptTemplates: PromptTemplate[] = [
   {
     id: "default",
     label: "概要 + 詳細",
-    description: "動画の全体像、要点、流れ、結論を整理",
+    description: "動画の全体像と詳しい流れを約10分で理解",
     instruction: [
-      "以下はYouTube動画の字幕です。内容を日本語でわかりやすく整理してください。",
+      "以下はYouTube動画の字幕です。内容を日本語でわかりやすく、約10分で読める分量に整理してください。",
       "",
-      "次の形式で回答してください。",
+      "次の2項目だけで回答してください。ほかの独立した項目は追加せず、必要な内容は概要または詳細に含めてください。",
       "1. この動画の概要",
-      "2. 重要なポイント",
-      "3. 話の流れの詳細",
-      "4. 結論・主張"
+      "2. 話の流れの詳細"
     ].join("\n")
   },
   {
@@ -1374,7 +1386,7 @@ function loadPromptSettings(): PromptSettings {
     const rawValue = localStorage.getItem(promptSettingsStorageKey);
     if (!rawValue) return fallback;
     const parsed = JSON.parse(rawValue) as Partial<PromptSettings>;
-    const templates = Array.isArray(parsed.templates) ? parsed.templates.map(normalizePromptTemplate).filter((template): template is PromptTemplate => Boolean(template)) : [];
+    const templates = Array.isArray(parsed.templates) ? parsed.templates.map(normalizePromptTemplate).filter((template): template is PromptTemplate => Boolean(template)).map(migratePromptTemplate) : [];
     if (templates.length === 0) return fallback;
     const defaultTemplateId = typeof parsed.defaultTemplateId === "string" && templates.some((template) => template.id === parsed.defaultTemplateId) ? parsed.defaultTemplateId : templates[0].id;
     return { defaultTemplateId, templates };
@@ -1405,6 +1417,15 @@ function normalizePromptTemplate(value: unknown): PromptTemplate | null {
   const candidate = value as Partial<PromptTemplate>;
   if (typeof candidate.id !== "string" || typeof candidate.label !== "string" || typeof candidate.description !== "string" || typeof candidate.instruction !== "string") return null;
   return { id: candidate.id, label: candidate.label, description: candidate.description, instruction: candidate.instruction };
+}
+
+function migratePromptTemplate(template: PromptTemplate): PromptTemplate {
+  const isUnchangedLegacyDefault =
+    template.id === legacyDefaultPromptTemplate.id &&
+    template.label === legacyDefaultPromptTemplate.label &&
+    template.description === legacyDefaultPromptTemplate.description &&
+    template.instruction === legacyDefaultPromptTemplate.instruction;
+  return isUnchangedLegacyDefault ? { ...defaultPromptTemplates[0] } : template;
 }
 
 function normalizeCodexHistoryEntry(value: unknown): CodexHistoryEntry | null {

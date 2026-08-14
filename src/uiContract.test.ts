@@ -35,6 +35,19 @@ describe("UI regression contract", () => {
     expect(mainSource).toContain('youtube-ai-brief.codex-history.v1');
   });
 
+  test("keeps the default prompt focused on a ten-minute overview and detail", () => {
+    const defaultTemplateStart = mainSource.indexOf("const defaultPromptTemplates");
+    const quickTemplateStart = mainSource.indexOf('id: "quick"', defaultTemplateStart);
+    const defaultTemplateSource = mainSource.slice(defaultTemplateStart, quickTemplateStart);
+
+    expect(defaultTemplateSource).toContain("約10分で読める分量");
+    expect(defaultTemplateSource).toContain("次の2項目だけで回答してください");
+    expect(defaultTemplateSource).toContain("1. この動画の概要");
+    expect(defaultTemplateSource).toContain("2. 話の流れの詳細");
+    expect(defaultTemplateSource).not.toContain("重要なポイント");
+    expect(defaultTemplateSource).not.toContain("結論・主張");
+  });
+
   test("keeps the mobile layout breakpoint and reduced-motion handling", () => {
     expect(styleSource).toContain("@media (max-width: 760px)");
     expect(styleSource).toContain("@media (prefers-reduced-motion: reduce)");
