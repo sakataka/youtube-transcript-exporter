@@ -153,10 +153,6 @@ const defaultPromptTemplates: PromptTemplate[] = [
 const uiText = {
   ja: {
     heading: "YouTube動画をAI向けに整理",
-    mediaPathLabel: "ローカル動画ファイル",
-    mediaPathPlaceholder: "/Users/you/Movies/video.mp4",
-    transcribeMedia: "動画を文字起こし",
-    transcribeMediaLoading: "文字起こし中",
     selectedLanguage: "選択言語",
     characterCount: "文字数",
     videoDuration: "動画時間",
@@ -241,10 +237,6 @@ const uiText = {
     japanese: "日本語",
     english: "English",
     urlRequired: "YouTube URLを入力してください。",
-    mediaPathRequired: "ローカル動画ファイルのパスを入力してください。",
-    transcribingMedia: "Kanaryで動画を文字起こししています。",
-    transcribeMediaFailed: "動画の文字起こしに失敗しました。",
-    mediaTranscriptReady: "動画の文字起こしを取得しました。",
     chooseCaption: "取得する字幕を選んでください。",
     noCaptions: "字幕が見つかりません。",
     listCaptionsFailed: "字幕候補の取得に失敗しました。",
@@ -270,15 +262,10 @@ const uiText = {
     defaultMark: " / デフォルト",
     manualCaption: "字幕",
     automaticCaption: "自動字幕",
-    kanaryTranscript: "Kanary文字起こし",
     captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`
   },
   en: {
     heading: "Prepare YouTube Videos for AI",
-    mediaPathLabel: "Local video file",
-    mediaPathPlaceholder: "/Users/you/Movies/video.mp4",
-    transcribeMedia: "Transcribe video",
-    transcribeMediaLoading: "Transcribing",
     selectedLanguage: "Selected language",
     characterCount: "Characters",
     videoDuration: "Duration",
@@ -363,10 +350,6 @@ const uiText = {
     japanese: "Japanese",
     english: "English",
     urlRequired: "Enter a YouTube URL.",
-    mediaPathRequired: "Enter a local video file path.",
-    transcribingMedia: "Transcribing the video with Kanary.",
-    transcribeMediaFailed: "Failed to transcribe the video.",
-    mediaTranscriptReady: "Fetched the video transcription.",
     chooseCaption: "Choose the caption to fetch.",
     noCaptions: "No captions found.",
     listCaptionsFailed: "Failed to fetch caption candidates.",
@@ -392,7 +375,6 @@ const uiText = {
     defaultMark: " / Default",
     manualCaption: "Caption",
     automaticCaption: "Auto caption",
-    kanaryTranscript: "Kanary transcription",
     captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`
   }
 };
@@ -405,7 +387,6 @@ type FollowUpContext = { kind: CodexQuestionKind; selectedExcerpt: string };
 
 function App() {
   const [url, setUrl] = useState("");
-  const [mediaPath, setMediaPath] = useState("");
   const [promptSettings, setPromptSettings] = useState(loadPromptSettings);
   const [appSettings, setAppSettings] = useState(loadAppSettings);
   const [selectedTemplateId, setSelectedTemplateId] = useState(promptSettings.defaultTemplateId);
@@ -422,7 +403,6 @@ function App() {
   const [status, setStatus] = useState<StatusMessage>({ text: "", error: false });
   const [captionLoading, setCaptionLoading] = useState(false);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
-  const [mediaLoading, setMediaLoading] = useState(false);
   const [codexLoading, setCodexLoading] = useState(false);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -446,7 +426,6 @@ function App() {
   const followUpRef = useRef<HTMLTextAreaElement>(null);
   const captionToken = useRef(0);
   const transcriptToken = useRef(0);
-  const mediaToken = useRef(0);
   const codexToken = useRef(0);
   const pendingCodex = useRef<PendingCodexRequest | null>(null);
   const codexBusy = useRef(false);
@@ -536,7 +515,6 @@ function App() {
   useEffect(() => () => {
     captionToken.current += 1;
     transcriptToken.current += 1;
-    mediaToken.current += 1;
     codexToken.current += 1;
     if (autoCheckTimer.current !== undefined) window.clearTimeout(autoCheckTimer.current);
   }, []);
@@ -670,45 +648,12 @@ function App() {
     }
   }
 
-  async function transcribeLocalMedia() {
-    const path = mediaPath.trim();
-    if (!path) {
-      showMessage(t("mediaPathRequired"), true);
-      return;
-    }
-    const token = ++mediaToken.current;
-    captionToken.current += 1;
-    clearResult();
-    setMediaLoading(true);
-    showMessage(t("transcribingMedia"));
-    appendDebugLog("frontend.transcribe_media.request", { path });
-    try {
-      const payload = await invokeBackend<TranscriptSuccess>("transcribe_media", { path });
-      if (token !== mediaToken.current) return;
-      const caption: CaptionOption = {
-        language: payload.language,
-        name: t("kanaryTranscript"),
-        source: payload.source,
-        isAutoCaption: false
-      };
-      setSelectedCaption(caption);
-      setTranscript(payload);
-      appendDebugLog("frontend.transcribe_media.applied", { textChars: payload.text.length, sourcePath: payload.sourcePath });
-      showMessage(t("mediaTranscriptReady"));
-    } catch (error) {
-      if (token === mediaToken.current) showMessage(formatError(error, t("transcribeMediaFailed")), true);
-    } finally {
-      if (token === mediaToken.current) setMediaLoading(false);
-    }
-  }
-
   function buildTimestampUrl(startSeconds: number) {
     return buildTimestampUrlFromBase(timestampBaseUrl, startSeconds);
   }
 
   function formatCaptionSource(source: CaptionSource) {
     if (source === "manual") return t("manualCaption");
-    if (source === "kanary") return t("kanaryTranscript");
     return t("automaticCaption");
   }
 
@@ -739,7 +684,7 @@ function App() {
     return {
       videoId: value.videoId,
       title: value.title || value.videoId,
-      url: value.webpageUrl || value.sourcePath || url.trim(),
+      url: value.webpageUrl || url.trim(),
       language: value.language,
       source: value.source
     };
@@ -1191,13 +1136,6 @@ function App() {
               <SearchIcon data-icon="inline-start" /><span>{t("transcriptSearchToggle")}</span>
             </Button>
           </div>
-          <div className="media-command-row">
-            <label className="sr-only" htmlFor="local-media-path">{t("mediaPathLabel")}</label>
-            <Input id="local-media-path" name="media-path" type="text" placeholder={t("mediaPathPlaceholder")} autoComplete="off" value={mediaPath} onChange={(event) => setMediaPath(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void transcribeLocalMedia(); } }} aria-busy={mediaLoading} />
-            <Button {...secondaryButtonProps} id="transcribe-media-button" type="button" disabled={mediaLoading} className={mediaLoading ? "is-loading" : undefined} aria-busy={mediaLoading} onClick={() => void transcribeLocalMedia()}>
-              <span>{mediaLoading ? t("transcribeMediaLoading") : t("transcribeMedia")}</span><Spinner className="loading-indicator" data-icon="inline-end" />
-            </Button>
-          </div>
           <Alert className={`status-message${status.error ? " error" : ""}`} id="message" role="status" aria-live="polite" hidden={!status.text.trim()}>{status.text}</Alert>
         </form>
         <div className="app-header-actions">
@@ -1515,7 +1453,7 @@ function isSettingsSection(value: string): value is "prompts" | "copy" | "displa
 }
 
 function matchesCaptionSource(value: unknown): value is CaptionSource {
-  return value === "manual" || value === "automatic" || value === "kanary";
+  return value === "manual" || value === "automatic";
 }
 
 function isLikelyYoutubeUrl(value: string) {

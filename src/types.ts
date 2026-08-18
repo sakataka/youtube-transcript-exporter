@@ -1,4 +1,4 @@
-export type CaptionSource = "manual" | "automatic" | "kanary";
+export type CaptionSource = "manual" | "automatic";
 
 export type CaptionOption = {
   language: string;
@@ -20,7 +20,6 @@ export type CaptionListSuccess = {
   description?: string;
   thumbnailUrl?: string;
   webpageUrl?: string;
-  sourcePath?: string;
   viewCount?: number;
   publishedDate?: string;
   duration?: string;
@@ -43,7 +42,6 @@ export type TranscriptSuccess = {
   description?: string;
   thumbnailUrl?: string;
   webpageUrl?: string;
-  sourcePath?: string;
   viewCount?: number;
   publishedDate?: string;
   duration?: string;

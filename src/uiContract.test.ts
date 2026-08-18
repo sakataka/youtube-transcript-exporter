@@ -7,9 +7,9 @@ describe("UI regression contract", () => {
   test("keeps the primary transcript entry points", () => {
     expect(mainSource).toContain('id="caption-form"');
     expect(mainSource).toContain('id="youtube-url"');
-    expect(mainSource).toContain('id="local-media-path"');
     expect(mainSource).toContain('id="ask-codex-button"');
-    expect(mainSource).toContain('id="transcribe-media-button"');
+    expect(mainSource).not.toContain('id="local-media-path"');
+    expect(mainSource).not.toContain('id="transcribe-media-button"');
   });
 
   test("keeps the three output modes and settings sections", () => {

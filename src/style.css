@@ -301,8 +301,7 @@
   padding-left: var(--space-4);
 }
 
-.command-row,
-.media-command-row {
+.command-row {
   display: grid;
   align-items: center;
   gap: var(--space-3);
@@ -313,12 +312,7 @@
   grid-template-columns: minmax(220px, 1fr) auto auto;
 }
 
-.media-command-row {
-  grid-template-columns: minmax(220px, 1fr) auto;
-}
-
-.command-row button,
-.media-command-row button {
+.command-row button {
   min-width: 0;
   padding-inline: var(--space-4);
   white-space: nowrap;
@@ -596,20 +590,17 @@ textarea:focus,
 }
 
 .command-row [data-slot="button"],
-.media-command-row [data-slot="button"],
 .app-header-actions [data-slot="button"] {
   min-height: 44px;
 }
 
-#ask-codex-button,
-#transcribe-media-button {
+#ask-codex-button {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground);
 }
 
-#ask-codex-button:hover:not(:disabled),
-#transcribe-media-button:hover:not(:disabled) {
+#ask-codex-button:hover:not(:disabled) {
   border-color: var(--accent-foreground);
   background: var(--accent-foreground);
 }
@@ -1331,15 +1322,9 @@ body:has(dialog[open]) {
     grid-column: 1 / -1;
   }
 
-  .command-row button,
-  .media-command-row button {
+  .command-row button {
     width: 100%;
     padding-inline: var(--space-2);
-  }
-
-  .media-command-row {
-    grid-template-columns: 1fr;
-    gap: var(--space-2);
   }
 
   .info-section,
