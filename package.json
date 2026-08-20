@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.0",
   "scripts": {
     "build": "vite build",
     "web": "bun run build && cargo run --manifest-path server/Cargo.toml --bin youtube-ai-brief-web",
