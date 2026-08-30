@@ -53,6 +53,7 @@ describe("prompt builder", () => {
     expect(prompt).toContain("元の字幕、動画情報、説明文、チャプター");
     expect(prompt).toContain("日本の詳細なPowerPoint資料やA4の解説シート");
     expect(prompt).toContain("情報を3〜6個など少数に制限せず");
+    expect(prompt).toContain("意味不明な文字列、偽漢字、文字化け");
     expect(prompt).not.toContain("強調すべき情報は3〜6個に絞り");
     expect(prompt).not.toContain("権利や出典に注意が必要そうな画像");
   });
