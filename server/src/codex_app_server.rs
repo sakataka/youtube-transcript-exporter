@@ -13,8 +13,8 @@ use std::{
     time::Instant,
 };
 
-const CODEX_MODEL: &str = "gpt-5.6-sol";
-const CODEX_REASONING_EFFORT: &str = "high";
+const CODEX_MODEL: &str = "gpt-6-astra";
+const CODEX_REASONING_EFFORT: &str = "medium";
 
 #[derive(Debug)]
 pub struct CodexAppServerError {
