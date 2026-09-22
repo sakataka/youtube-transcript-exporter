@@ -154,7 +154,10 @@ const uiText = {
     displaySaved: "表示設定を保存しました。",
     manualCaption: "字幕",
     automaticCaption: "自動字幕",
-    captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`
+    captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`,
+    outputPlaceholder: "YouTube URLを入力すると、ここに字幕が表示されます。",
+    answerPlaceholder: "AIの回答はここに表示されます。",
+    answerRunningPlaceholder: "AIが回答を作成しています…"
   },
   en: {
     heading: "Prepare YouTube Videos for AI",
@@ -249,7 +252,10 @@ const uiText = {
     displaySaved: "Display settings saved.",
     manualCaption: "Caption",
     automaticCaption: "Auto caption",
-    captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`
+    captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`,
+    outputPlaceholder: "Enter a YouTube URL to show the transcript here.",
+    answerPlaceholder: "The AI answer will appear here.",
+    answerRunningPlaceholder: "AI is writing an answer…"
   }
 };
 
@@ -990,8 +996,8 @@ function App() {
                 </div>
               </div>
             </Tabs>
-            <Textarea ref={outputRef} id="transcript-output" spellCheck={false} readOnly value={outputValue} hidden={outputMode === "codexAnswer"} onSelect={cacheSelectedText} />
-            <div ref={answerOutputRef} id="codex-answer-output" className="markdown-output" hidden={outputMode !== "codexAnswer"} dangerouslySetInnerHTML={{ __html: answerHtml }} onClick={(event) => void handleAnswerLink(event)} onMouseUp={cacheSelectedText} onKeyUp={cacheSelectedText} />
+            <Textarea ref={outputRef} id="transcript-output" spellCheck={false} readOnly placeholder={t("outputPlaceholder")} value={outputValue} hidden={outputMode === "codexAnswer"} onSelect={cacheSelectedText} />
+            <div ref={answerOutputRef} id="codex-answer-output" className="markdown-output" data-placeholder={codexRunning ? t("answerRunningPlaceholder") : t("answerPlaceholder")} hidden={outputMode !== "codexAnswer"} dangerouslySetInnerHTML={{ __html: answerHtml }} onClick={(event) => void handleAnswerLink(event)} onMouseUp={cacheSelectedText} onKeyUp={cacheSelectedText} />
             <section className="history-panel" id="codex-history-panel" hidden={history.length === 0}>
               <div className="history-header"><h3>{t("codexHistoryTitle")}</h3><div className="history-header-actions"><span id="codex-history-count">{history.length.toLocaleString(locale)}</span><ToolbarButton id="clear-codex-history" onClick={clearHistory}>{t("clearCodexHistory")}</ToolbarButton></div></div>
               <div className="history-list" id="codex-history-list">
