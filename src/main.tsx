@@ -20,6 +20,8 @@ import { invokeBackend } from "./backendClient";
 import { getCodexAnswerTextForCopy, normalizeCodexAnswerMarkdown } from "./codexAnswerText";
 import { renderMarkdown as renderMarkdownOutput } from "./markdownRenderer";
 import {
+  analysisPromptId,
+  analysisPromptLabel,
   buildAnalysisPrompt as buildAnalysisPromptText,
   buildFollowUpPrompt as buildFollowUpPromptText
 } from "./promptBuilder";
@@ -42,8 +44,6 @@ import type {
   CodexOutputMode,
   CodexQuestionKind,
   PendingCodexRequest,
-  PromptSettings,
-  PromptTemplate,
   StoredAppSettings,
   TranscriptDisplayMode,
   TranscriptSuccess
@@ -54,101 +54,11 @@ type DebugLogReadResult = {
   content: string;
 };
 
-const promptSettingsStorageKey = "youtube-transcript-exporter.prompt-settings.v1";
 const appSettingsStorageKey = "youtube-transcript-exporter.app-settings.v1";
 const codexHistoryStorageKey = "youtube-ai-brief.codex-history.v1";
 const codexHistoryLimit = 20;
 const codexPollIntervalMs = 900;
-const defaultPromptTemplateId = "default";
 const appName = "YouTube AI Brief";
-const legacyDefaultPromptTemplate: PromptTemplate = {
-  id: "default",
-  label: "概要 + 詳細",
-  description: "動画の全体像、要点、流れ、結論を整理",
-  instruction: [
-    "以下はYouTube動画の字幕です。内容を日本語でわかりやすく整理してください。",
-    "",
-    "次の形式で回答してください。",
-    "1. この動画の概要",
-    "2. 重要なポイント",
-    "3. 話の流れの詳細",
-    "4. 結論・主張"
-  ].join("\n")
-};
-const defaultPromptTemplates: PromptTemplate[] = [
-  {
-    id: "default",
-    label: "概要 + 詳細",
-    description: "動画の全体像と詳しい流れを約10分で理解",
-    instruction: [
-      "以下はYouTube動画の字幕です。内容を日本語でわかりやすく、約10分で読める分量に整理してください。",
-      "",
-      "次の2項目だけで回答してください。ほかの独立した項目は追加せず、必要な内容は概要または詳細に含めてください。",
-      "1. この動画の概要",
-      "2. 話の流れの詳細"
-    ].join("\n")
-  },
-  {
-    id: "quick",
-    label: "要点だけ",
-    description: "短時間で把握できる箇条書き",
-    instruction: [
-      "以下はYouTube動画の字幕です。内容を日本語で簡潔に要約してください。",
-      "",
-      "次の形式で回答してください。",
-      "1. 30秒でわかる要約",
-      "2. 重要なポイント5つ",
-      "3. 最後に覚えておくべき結論"
-    ].join("\n")
-  },
-  {
-    id: "detailed",
-    label: "詳しく解説",
-    description: "背景や専門用語まで深く理解",
-    instruction: [
-      "以下はYouTube動画の字幕です。内容を日本語で詳しく解説してください。",
-      "",
-      "次の形式で回答してください。",
-      "1. 全体の概要",
-      "2. 話題ごとの詳しい解説",
-      "3. 背景知識や前提",
-      "4. 専門用語の説明",
-      "5. 実務や学習に使える示唆",
-      "6. 注意点や不確かな点"
-    ].join("\n")
-  },
-  {
-    id: "argument",
-    label: "主張と根拠",
-    description: "議論、結論、根拠を分解",
-    instruction: [
-      "以下はYouTube動画の字幕です。話者の主張、根拠、結論を日本語で整理してください。",
-      "",
-      "次の形式で回答してください。",
-      "1. 話者が一番言いたいこと",
-      "2. 主張ごとの根拠",
-      "3. 反論や弱い前提がありそうな点",
-      "4. 結論",
-      "5. 現時点の最新状況と照らした客観的な確認",
-      "6. 自分ならどう判断すべきか"
-    ].join("\n")
-  },
-  {
-    id: "study",
-    label: "語学・学習",
-    description: "外国語動画の理解と表現学習",
-    instruction: [
-      "以下はYouTube動画の字幕です。内容を日本語で解説し、学習にも使える形で整理してください。",
-      "",
-      "次の形式で回答してください。",
-      "1. 内容の概要",
-      "2. 重要な表現やキーワード",
-      "3. 文脈上わかりにくい表現の説明",
-      "4. 日本語での自然な言い換え",
-      "5. この動画から学べること"
-    ].join("\n")
-  }
-];
 
 const uiText = {
   ja: {
@@ -160,7 +70,6 @@ const uiText = {
     canonicalUrlLink: "リンク",
     viewCount: "再生数",
     captionSourceLabel: "字幕種別",
-    copyPrompt: "生成AIプロンプト",
     includeImagePrompt: "画像生成指示を含む",
     formatAutomaticTranscript: "自動字幕を整形",
     transcriptDisplayModeLabel: "字幕表示のタイムスタンプ",
@@ -209,22 +118,13 @@ const uiText = {
     settingsEyebrow: "Settings",
     settingsTitle: "設定",
     close: "閉じる",
-    promptsTab: "プロンプト",
     copyTab: "コピー",
     displayTab: "表示",
     copySettingsTitle: "コピー設定",
-    copySettingsDescription: "字幕取得後にクリップボードへ入れる内容と、AIへ渡す追加指示をまとめて管理します。",
-    template: "テンプレート",
-    add: "追加",
-    delete: "削除",
-    title: "タイトル",
-    description: "説明",
-    body: "本文",
-    defaultTemplate: "このテンプレートを自動コピーのデフォルトにする",
-    reset: "初期状態に戻す",
+    copySettingsDescription: "字幕取得後にクリップボードへ入れる内容と、AIへ渡す追加指示を管理します。文章回答は概要と時刻ごとの詳細に統一されています。",
     save: "保存",
     uiLanguage: "UI言語",
-    uiLanguageDescription: "アプリ画面の表示言語を切り替えます。コピーされるプロンプト本文は、各テンプレートの内容をそのまま使います。",
+    uiLanguageDescription: "アプリ画面の表示言語を切り替えます。AIへの文章指示は日本語の固定形式です。",
     completionSound: "AI回答の完了時に音を鳴らす",
     debugLog: "デバッグログ",
     debugLogDescription: "取得時間、生成AIへの依頼内容、応答タイミング、表示処理のタイミングをローカルログへ記録します。外部アプリを開かず、この画面で確認できます。",
@@ -250,16 +150,8 @@ const uiText = {
     codexPromptRequired: "字幕を取得してから生成AIに質問してください。",
     askingCodex: "",
     codexAnswerFailed: "Codexから回答を取得できませんでした。",
-    promptChanged: "プロンプトを変更しました。コピーするとこの形式でクリップボードに入ります。",
     copyOptionsChanged: "コピー設定を変更しました。表示とコピー内容に反映しました。",
-    settingsReset: "プロンプト設定を初期状態に戻しました。",
-    settingsSaved: "プロンプト設定を保存しました。",
     displaySaved: "表示設定を保存しました。",
-    newPrompt: "新しいプロンプト",
-    newPromptDescription: "説明を入力してください",
-    newPromptInstruction: "以下はYouTube動画の字幕です。内容を日本語で整理してください。",
-    untitledPrompt: "無題のプロンプト",
-    defaultMark: " / デフォルト",
     manualCaption: "字幕",
     automaticCaption: "自動字幕",
     captionCount: (count: number) => `${count.toLocaleString("ja-JP")}件`
@@ -273,7 +165,6 @@ const uiText = {
     canonicalUrlLink: "Link",
     viewCount: "Views",
     captionSourceLabel: "Caption type",
-    copyPrompt: "Generative AI prompt",
     includeImagePrompt: "Include image prompt",
     formatAutomaticTranscript: "Clean auto captions",
     transcriptDisplayModeLabel: "Transcript timestamps",
@@ -322,22 +213,13 @@ const uiText = {
     settingsEyebrow: "Settings",
     settingsTitle: "Settings",
     close: "Close",
-    promptsTab: "Prompts",
     copyTab: "Copy",
     displayTab: "Display",
     copySettingsTitle: "Copy settings",
-    copySettingsDescription: "Controls copied transcript content and the extra instructions sent to AI after fetching captions.",
-    template: "Template",
-    add: "Add",
-    delete: "Delete",
-    title: "Title",
-    description: "Description",
-    body: "Body",
-    defaultTemplate: "Use this template as the default for automatic copy",
-    reset: "Reset to defaults",
+    copySettingsDescription: "Controls copied transcript content and extra AI instructions. Written answers always use an overview followed by timestamped details.",
     save: "Save",
     uiLanguage: "UI language",
-    uiLanguageDescription: "Changes the app display language. Copied prompt text still uses each template exactly as written.",
+    uiLanguageDescription: "Changes the app display language. The fixed written-answer prompt remains in Japanese.",
     completionSound: "Play a sound when the AI answer completes",
     debugLog: "Debug log",
     debugLogDescription: "Writes local timing logs for caption fetching, AI prompts, response timing, and rendering. You can read it here without opening another app.",
@@ -363,16 +245,8 @@ const uiText = {
     codexPromptRequired: "Fetch a transcript before asking AI.",
     askingCodex: "",
     codexAnswerFailed: "Could not get a Codex answer.",
-    promptChanged: "Prompt changed. Copy will use this format.",
     copyOptionsChanged: "Copy settings updated. Display and copied text now use them.",
-    settingsReset: "Prompt settings were reset to defaults.",
-    settingsSaved: "Prompt settings saved.",
     displaySaved: "Display settings saved.",
-    newPrompt: "New prompt",
-    newPromptDescription: "Enter a description",
-    newPromptInstruction: "The following is a YouTube video transcript. Please organize the content clearly.",
-    untitledPrompt: "Untitled prompt",
-    defaultMark: " / Default",
     manualCaption: "Caption",
     automaticCaption: "Auto caption",
     captionCount: (count: number) => `${count.toLocaleString("en-US")} item${count === 1 ? "" : "s"}`
@@ -382,14 +256,11 @@ const uiText = {
 const secondaryButtonProps = { variant: "outline" as const, size: "lg" as const };
 
 type StatusMessage = { text: string; error: boolean };
-type TemplateDraft = PromptTemplate & { isDefault: boolean };
 type FollowUpContext = { kind: CodexQuestionKind; selectedExcerpt: string };
 
 function App() {
   const [url, setUrl] = useState("");
-  const [promptSettings, setPromptSettings] = useState(loadPromptSettings);
   const [appSettings, setAppSettings] = useState(loadAppSettings);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(promptSettings.defaultTemplateId);
   const [captionList, setCaptionList] = useState<CaptionListSuccess | null>(null);
   const [selectedCaption, setSelectedCaption] = useState<CaptionOption | null>(null);
   const [transcript, setTranscript] = useState<TranscriptSuccess | null>(null);
@@ -407,9 +278,7 @@ function App() {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<"prompts" | "copy" | "display">("prompts");
-  const [settingsTemplateId, setSettingsTemplateId] = useState(promptSettings.defaultTemplateId);
-  const [templateDraft, setTemplateDraft] = useState<TemplateDraft>(() => toTemplateDraft(promptSettings, promptSettings.defaultTemplateId));
+  const [settingsSection, setSettingsSection] = useState<"copy" | "display">("copy");
   const [uiLanguageDraft, setUiLanguageDraft] = useState(appSettings.uiLanguage);
   const [completionSoundDraft, setCompletionSoundDraft] = useState(appSettings.completionSoundEnabled);
   const [debugLog, setDebugLog] = useState<DebugLogReadResult | null>(null);
@@ -422,7 +291,6 @@ function App() {
   const answerOutputRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
-  const settingsTitleRef = useRef<HTMLInputElement>(null);
   const followUpRef = useRef<HTMLTextAreaElement>(null);
   const captionToken = useRef(0);
   const transcriptToken = useRef(0);
@@ -442,10 +310,6 @@ function App() {
     return typeof entry === "function" ? entry(value as never) : entry;
   };
 
-  const selectedTemplate =
-    promptSettings.templates.find((template) => template.id === selectedTemplateId) ??
-    promptSettings.templates.find((template) => template.id === promptSettings.defaultTemplateId) ??
-    promptSettings.templates[0];
   const metadata = transcript ?? captionList;
   const transcriptText = useMemo(
     () => (transcript ? buildTranscriptTextForDisplay(transcript, appSettings) : ""),
@@ -464,8 +328,8 @@ function App() {
       .slice(0, 50);
   }, [searchQuery, searchableSegments]);
   const promptOutput = useMemo(
-    () => (transcript && selectedTemplate ? buildAnalysisPrompt(transcript, selectedTemplate) : ""),
-    [transcript, selectedTemplate, selectedCaption, appSettings, url, timestampBaseUrl]
+    () => (transcript ? buildAnalysisPrompt(transcript) : ""),
+    [transcript, selectedCaption, appSettings, url, timestampBaseUrl]
   );
   const outputValue = outputMode === "copyPrompt" ? promptOutput : transcriptText;
   const answerHtml = useMemo(
@@ -663,11 +527,10 @@ function App() {
 
   function buildAnalysisPrompt(
     value: TranscriptSuccess,
-    template: PromptTemplate,
     options: { includeImageInstruction?: boolean; caption?: CaptionOption | null } = {}
   ) {
     const caption = options.caption === undefined ? selectedCaption : options.caption;
-    return buildAnalysisPromptText(value, template, {
+    return buildAnalysisPromptText(value, {
       includeImageInstruction: options.includeImageInstruction ?? appSettings.includeImagePrompt,
       transcriptText: buildTranscriptTextForDisplay(value, appSettings),
       captionLabel: caption
@@ -695,19 +558,18 @@ function App() {
   }
 
   async function askCodexWithTranscript(value: TranscriptSuccess, caption = selectedCaption) {
-    if (!selectedTemplate) return;
-    const prompt = buildAnalysisPrompt(value, selectedTemplate, { includeImageInstruction: false, caption });
+    const prompt = buildAnalysisPrompt(value, { includeImageInstruction: false, caption });
     appendDebugLog("frontend.codex_prompt.built", {
-      templateId: selectedTemplate.id,
+      templateId: analysisPromptId,
       generateImage: appSettings.includeImagePrompt,
       promptChars: prompt.length,
       promptPreview: truncateForLog(prompt, 8000)
     });
     await startCodexRequest(prompt, {
       questionKind: "initial",
-      questionText: selectedTemplate.label,
+      questionText: analysisPromptLabel,
       selectedExcerpt: "",
-      templateId: selectedTemplate.id,
+      templateId: analysisPromptId,
       generateImage: appSettings.includeImagePrompt,
       answerContext: getTranscriptAnswerContext(value)
     });
@@ -815,19 +677,19 @@ function App() {
   }
 
   async function rerunAnswer() {
-    if (!transcript || !selectedTemplate) {
+    if (!transcript) {
       showMessage(t("codexPromptRequired"), true);
       return;
     }
     const prompt =
       answerKind === "followup" || answerKind === "selection"
-        ? buildFollowUpPrompt(answerQuestion || selectedTemplate.label, answerExcerpt)
-        : buildAnalysisPrompt(transcript, selectedTemplate, { includeImageInstruction: false });
+        ? buildFollowUpPrompt(answerQuestion || analysisPromptLabel, answerExcerpt)
+        : buildAnalysisPrompt(transcript, { includeImageInstruction: false });
     await startCodexRequest(prompt, {
       questionKind: "rerun",
-      questionText: answerQuestion || selectedTemplate.label,
+      questionText: answerQuestion || analysisPromptLabel,
       selectedExcerpt: answerExcerpt,
-      templateId: selectedTemplate.id,
+      templateId: analysisPromptId,
       generateImage: appSettings.includeImagePrompt,
       answerContext: getTranscriptAnswerContext(transcript)
     });
@@ -865,12 +727,11 @@ function App() {
     const context = followUpContext ?? { kind: "followup" as CodexQuestionKind, selectedExcerpt: "" };
     setFollowUpOpen(false);
     setFollowUpContext(null);
-    if (!selectedTemplate) return;
     await startCodexRequest(buildFollowUpPrompt(question, context.selectedExcerpt), {
       questionKind: context.kind,
       questionText: question,
       selectedExcerpt: context.selectedExcerpt,
-      templateId: selectedTemplate.id,
+      templateId: analysisPromptId,
       generateImage: false,
       answerContext: getActiveAnswerContext()
     });
@@ -949,87 +810,15 @@ function App() {
     showMessage(t("codexHistoryCleared"));
   }
 
-  function selectSettingsTemplate(id: string) {
-    setSettingsTemplateId(id);
-    setTemplateDraft(toTemplateDraft(promptSettings, id));
-  }
-
   function openSettings() {
     setUiLanguageDraft(appSettings.uiLanguage);
     setCompletionSoundDraft(appSettings.completionSoundEnabled);
-    selectSettingsTemplate(selectedTemplateId || promptSettings.defaultTemplateId);
     setSettingsOpen(true);
-    requestAnimationFrame(() => {
-      settingsTitleRef.current?.focus();
-      settingsTitleRef.current?.select();
-    });
   }
 
   function closeSettings() {
     setSettingsOpen(false);
     requestAnimationFrame(() => settingsButtonRef.current?.focus());
-  }
-
-  function addTemplate() {
-    const template: PromptTemplate = {
-      id: `custom-${Date.now()}`,
-      label: t("newPrompt"),
-      description: t("newPromptDescription"),
-      instruction: t("newPromptInstruction")
-    };
-    const next = { ...promptSettings, templates: [...promptSettings.templates, template] };
-    setPromptSettings(next);
-    storePromptSettings(next);
-    setSettingsTemplateId(template.id);
-    setTemplateDraft({ ...template, isDefault: false });
-  }
-
-  function deleteTemplate() {
-    if (promptSettings.templates.length <= 1) return;
-    const templates = promptSettings.templates.filter((template) => template.id !== settingsTemplateId);
-    const defaultTemplateId =
-      promptSettings.defaultTemplateId === settingsTemplateId
-        ? templates[0]?.id ?? defaultPromptTemplateId
-        : promptSettings.defaultTemplateId;
-    const next = { defaultTemplateId, templates };
-    const nextId = templates[0]?.id ?? defaultTemplateId;
-    setPromptSettings(next);
-    storePromptSettings(next);
-    setSelectedTemplateId(resolveTemplateId(next, selectedTemplateId));
-    setSettingsTemplateId(nextId);
-    setTemplateDraft(toTemplateDraft(next, nextId));
-  }
-
-  function resetTemplates() {
-    const next = createDefaultPromptSettings();
-    setPromptSettings(next);
-    storePromptSettings(next);
-    setSelectedTemplateId(next.defaultTemplateId);
-    setSettingsTemplateId(next.defaultTemplateId);
-    setTemplateDraft(toTemplateDraft(next, next.defaultTemplateId));
-    showMessage(t("settingsReset"));
-  }
-
-  function saveTemplate() {
-    const templates = promptSettings.templates.map((template) =>
-      template.id === settingsTemplateId
-        ? {
-            ...template,
-            label: templateDraft.label.trim() || t("untitledPrompt"),
-            description: templateDraft.description.trim(),
-            instruction: templateDraft.instruction.trim() || t("newPromptInstruction")
-          }
-        : template
-    );
-    const next = {
-      templates,
-      defaultTemplateId: templateDraft.isDefault ? settingsTemplateId : promptSettings.defaultTemplateId
-    };
-    setPromptSettings(next);
-    storePromptSettings(next);
-    setSelectedTemplateId(settingsTemplateId);
-    setTemplateDraft(toTemplateDraft(next, settingsTemplateId));
-    showMessage(t("settingsSaved"));
   }
 
   function saveDisplaySettings() {
@@ -1158,13 +947,6 @@ function App() {
             <div className="meta-summary-item"><span className="label">{t("canonicalUrl")}</span><strong id="canonical-url">{metadata?.webpageUrl ? <a href={metadata.webpageUrl} onClick={(event) => { event.preventDefault(); void openTimestampUrl(metadata.webpageUrl); }}>{t("canonicalUrlLink")}</a> : "-"}</strong></div>
             <MetaItem label={t("viewCount")} value={typeof metadata?.viewCount === "number" ? metadata.viewCount.toLocaleString(locale) : "-"} />
             <MetaItem label={t("captionSourceLabel")} value={source ? formatCaptionSource(source) : "-"} />
-            <div className="meta-prompt-settings">
-              <label className="label" htmlFor="prompt-template">{t("copyPrompt")}</label>
-              <NativeSelect id="prompt-template" className="w-full" value={selectedTemplate?.id} onChange={(event) => { setSelectedTemplateId(event.target.value); if (transcript) showMessage(t("promptChanged")); }}>
-                {promptSettings.templates.map((template) => <NativeSelectOption key={template.id} value={template.id}>{template.label}</NativeSelectOption>)}
-              </NativeSelect>
-              <p className="prompt-description" id="prompt-description">{selectedTemplate?.description}</p>
-            </div>
           </div>
         </section>
 
@@ -1229,21 +1011,10 @@ function App() {
           <div className="settings-header"><div><p className="eyebrow">{t("settingsEyebrow")}</p><h2 id="prompt-settings-title">{t("settingsTitle")}</h2></div><ToolbarButton id="prompt-settings-close" onClick={closeSettings}>{t("close")}</ToolbarButton></div>
           <Tabs value={settingsSection} onValueChange={(value) => { if (isSettingsSection(value)) setSettingsSection(value); }}>
             <TabsList variant="line" aria-label="Settings sections" className="settings-tabs">
-              <TabsTrigger className="settings-tab" id="settings-prompts-tab" value="prompts" data-settings-section="prompts">{t("promptsTab")}</TabsTrigger>
               <TabsTrigger className="settings-tab" id="settings-copy-tab" value="copy" data-settings-section="copy">{t("copyTab")}</TabsTrigger>
               <TabsTrigger className="settings-tab" id="settings-display-tab" value="display" data-settings-section="display">{t("displayTab")}</TabsTrigger>
             </TabsList>
             <div className="settings-body">
-              <section className="settings-section" id="settings-prompts-section" role="tabpanel" aria-labelledby="settings-prompts-tab" hidden={settingsSection !== "prompts"}>
-                <div className="settings-template-list"><label className="label" htmlFor="settings-template-select">{t("template")}</label><select id="settings-template-select" size={6} value={settingsTemplateId} onChange={(event) => selectSettingsTemplate(event.target.value)}>{promptSettings.templates.map((template) => <option key={template.id} value={template.id}>{template.label}{template.id === promptSettings.defaultTemplateId ? t("defaultMark") : ""}</option>)}</select><div className="settings-actions"><ToolbarButton id="settings-add-template" onClick={addTemplate}>{t("add")}</ToolbarButton><ToolbarButton id="settings-delete-template" disabled={promptSettings.templates.length <= 1} onClick={deleteTemplate}>{t("delete")}</ToolbarButton></div></div>
-                <div className="settings-editor">
-                  <FormField id="settings-template-title" label={t("title")}><Input ref={settingsTitleRef} id="settings-template-title" type="text" value={templateDraft.label} onChange={(event) => setTemplateDraft((draft) => ({ ...draft, label: event.target.value }))} /></FormField>
-                  <FormField id="settings-template-description" label={t("description")}><Input id="settings-template-description" type="text" value={templateDraft.description} onChange={(event) => setTemplateDraft((draft) => ({ ...draft, description: event.target.value }))} /></FormField>
-                  <FormField id="settings-template-body" label={t("body")}><Textarea id="settings-template-body" className="settings-template-body" spellCheck={false} value={templateDraft.instruction} onChange={(event) => setTemplateDraft((draft) => ({ ...draft, instruction: event.target.value }))} /></FormField>
-                  <ControlledCheckbox id="settings-template-default" checked={templateDraft.isDefault} onChange={(checked) => setTemplateDraft((draft) => ({ ...draft, isDefault: checked }))}>{t("defaultTemplate")}</ControlledCheckbox>
-                  <div className="settings-footer"><ToolbarButton id="settings-reset-template" onClick={resetTemplates}>{t("reset")}</ToolbarButton><Button id="settings-save-template" type="button" size="lg" onClick={saveTemplate}>{t("save")}</Button></div>
-                </div>
-              </section>
               <section className="settings-section settings-section-single" id="settings-copy-section" role="tabpanel" aria-labelledby="settings-copy-tab" hidden={settingsSection !== "copy"}>
                 <div className="settings-editor"><div><h3 className="settings-section-title">{t("copySettingsTitle")}</h3><p className="hint">{t("copySettingsDescription")}</p></div><div className="copy-option-row">
                   <ControlledCheckbox id="include-image-prompt" className="option-toggle" checked={appSettings.includeImagePrompt} onChange={(checked) => { updateAppSettings({ includeImagePrompt: checked }); showMessage(t("copyOptionsChanged")); }}>{t("includeImagePrompt")}</ControlledCheckbox>
@@ -1285,7 +1056,7 @@ function FormField({ id, label, children }: { id: string; label: string; childre
   return <Field><FieldLabel htmlFor={id}>{label}</FieldLabel>{children}</Field>;
 }
 
-function ControlledCheckbox({ id, checked, onChange, children, className = "default-template-toggle" }: { id: string; checked: boolean; onChange: (checked: boolean) => void; children: React.ReactNode; className?: string }) {
+function ControlledCheckbox({ id, checked, onChange, children, className = "checkbox-row" }: { id: string; checked: boolean; onChange: (checked: boolean) => void; children: React.ReactNode; className?: string }) {
   return <label className={className} htmlFor={`${id}-control`}><Checkbox id={`${id}-control`} aria-labelledby={`${id}-label`} checked={checked} onCheckedChange={(value) => onChange(value === true)} /><span id={`${id}-label`}>{children}</span></label>;
 }
 
@@ -1318,21 +1089,6 @@ function loadAppSettings(): AppSettings {
   }
 }
 
-function loadPromptSettings(): PromptSettings {
-  const fallback = createDefaultPromptSettings();
-  try {
-    const rawValue = localStorage.getItem(promptSettingsStorageKey);
-    if (!rawValue) return fallback;
-    const parsed = JSON.parse(rawValue) as Partial<PromptSettings>;
-    const templates = Array.isArray(parsed.templates) ? parsed.templates.map(normalizePromptTemplate).filter((template): template is PromptTemplate => Boolean(template)).map(migratePromptTemplate) : [];
-    if (templates.length === 0) return fallback;
-    const defaultTemplateId = typeof parsed.defaultTemplateId === "string" && templates.some((template) => template.id === parsed.defaultTemplateId) ? parsed.defaultTemplateId : templates[0].id;
-    return { defaultTemplateId, templates };
-  } catch {
-    return fallback;
-  }
-}
-
 function loadCodexHistory(): CodexHistoryEntry[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(codexHistoryStorageKey) ?? "[]");
@@ -1342,44 +1098,11 @@ function loadCodexHistory(): CodexHistoryEntry[] {
   }
 }
 
-function createDefaultPromptSettings(): PromptSettings {
-  return { defaultTemplateId: defaultPromptTemplateId, templates: defaultPromptTemplates.map((template) => ({ ...template })) };
-}
-
-function storePromptSettings(settings: PromptSettings) {
-  localStorage.setItem(promptSettingsStorageKey, JSON.stringify(settings));
-}
-
-function normalizePromptTemplate(value: unknown): PromptTemplate | null {
-  if (!value || typeof value !== "object") return null;
-  const candidate = value as Partial<PromptTemplate>;
-  if (typeof candidate.id !== "string" || typeof candidate.label !== "string" || typeof candidate.description !== "string" || typeof candidate.instruction !== "string") return null;
-  return { id: candidate.id, label: candidate.label, description: candidate.description, instruction: candidate.instruction };
-}
-
-function migratePromptTemplate(template: PromptTemplate): PromptTemplate {
-  const isUnchangedLegacyDefault =
-    template.id === legacyDefaultPromptTemplate.id &&
-    template.label === legacyDefaultPromptTemplate.label &&
-    template.description === legacyDefaultPromptTemplate.description &&
-    template.instruction === legacyDefaultPromptTemplate.instruction;
-  return isUnchangedLegacyDefault ? { ...defaultPromptTemplates[0] } : template;
-}
-
 function normalizeCodexHistoryEntry(value: unknown): CodexHistoryEntry | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<CodexHistoryEntry>;
   if (typeof candidate.id !== "string" || typeof candidate.createdAt !== "string" || typeof candidate.videoId !== "string" || typeof candidate.title !== "string" || typeof candidate.url !== "string" || typeof candidate.language !== "string" || !matchesCaptionSource(candidate.source) || typeof candidate.templateId !== "string" || typeof candidate.questionKind !== "string" || typeof candidate.questionText !== "string" || typeof candidate.selectedExcerpt !== "string" || typeof candidate.answerMarkdown !== "string") return null;
   return { ...(candidate as CodexHistoryEntry), answerMarkdown: normalizeCodexAnswerMarkdown(candidate.answerMarkdown) };
-}
-
-function toTemplateDraft(settings: PromptSettings, id: string): TemplateDraft {
-  const template = settings.templates.find((item) => item.id === id) ?? settings.templates[0] ?? defaultPromptTemplates[0];
-  return { ...template, isDefault: template.id === settings.defaultTemplateId };
-}
-
-function resolveTemplateId(settings: PromptSettings, id: string) {
-  return settings.templates.some((template) => template.id === id) ? id : settings.defaultTemplateId;
 }
 
 function normalizeSearchText(value: string) {
@@ -1448,8 +1171,8 @@ function isOutputMode(value: string): value is CodexOutputMode {
   return value === "transcript" || value === "copyPrompt" || value === "codexAnswer";
 }
 
-function isSettingsSection(value: string): value is "prompts" | "copy" | "display" {
-  return value === "prompts" || value === "copy" || value === "display";
+function isSettingsSection(value: string): value is "copy" | "display" {
+  return value === "copy" || value === "display";
 }
 
 function matchesCaptionSource(value: unknown): value is CaptionSource {

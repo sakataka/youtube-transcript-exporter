@@ -1,5 +1,21 @@
 import { normalizeTranscriptSegment } from "./transcriptText";
-import type { CaptionSource, CodexAnswerContext, PromptTemplate, TimedTranscriptSegment, TranscriptDisplayMode, TranscriptSuccess } from "./types";
+import type { CaptionSource, CodexAnswerContext, TimedTranscriptSegment, TranscriptDisplayMode, TranscriptSuccess } from "./types";
+
+export const analysisPromptId = "overview-timeline";
+export const analysisPromptLabel = "概要 + 時刻別詳細";
+
+const analysisInstruction = [
+  "以下はYouTube動画の字幕です。内容を日本語で、全体像と時系列の両方がわかるように詳しく整理してください。",
+  "",
+  "次の2項目だけで回答してください。ほかの独立した項目は追加せず、必要な内容は概要または時刻ごとの詳細に含めてください。",
+  "# 1. この動画の概要",
+  "動画全体のテーマ、重要な主張、結論を、初めて読む人にもわかる文章でまとめてください。",
+  "",
+  "# 2. 時刻ごとの詳細",
+  "動画の進行に沿って、原則として約5分ごとに区切って詳しく説明してください。長い動画や話題のまとまりによっては約10分ごとに調整して構いません。既存のチャプターや明確な話題転換がある場合は、その境界を優先してください。",
+  "各区間は `## 0:00 話題を表す短い見出し` のように、その区間の開始時刻を `mm:ss` または `h:mm:ss` 形式で見出しの先頭に置いてください。回答画面から該当時刻へ移動できるよう、時刻を省略しないでください。",
+  "各区間では、単なる箇条書きの要約ではなく、話の展開、具体例、理由や根拠、重要な固有名詞・数値、前後のつながりがわかる文章で説明してください。字幕から内容を確認できない時間帯は作らないでください。"
+].join("\n");
 
 export type BuildAnalysisPromptOptions = {
   includeImageInstruction: boolean;
@@ -13,7 +29,6 @@ export type BuildAnalysisPromptOptions = {
 
 export function buildAnalysisPrompt(
   transcript: TranscriptSuccess,
-  template: PromptTemplate,
   options: BuildAnalysisPromptOptions
 ) {
   const metadata = [
@@ -47,7 +62,7 @@ export function buildAnalysisPrompt(
     options.includeImageInstruction ? "最初から画像だけを生成せず、必ず文章での説明を先に出力してください。" : null,
     "",
     "文章での説明指示:",
-    template.instruction,
+    analysisInstruction,
     "",
     "出力形式:",
     buildMarkdownOutputInstruction(),
@@ -75,7 +90,7 @@ export function buildAnalysisPrompt(
     "",
     options.transcriptDisplayMode === "timestamped" ? null : buildTimedReference(transcript, options.buildTimestampUrl),
     "",
-    options.includeImageInstruction ? buildImageGenerationInstruction(template) : null
+    options.includeImageInstruction ? buildImageGenerationInstruction() : null
   ]
     .filter((line) => line !== null)
     .join("\n");
@@ -134,18 +149,17 @@ export function buildFollowUpPrompt(options: BuildFollowUpPromptOptions) {
 function buildMarkdownOutputInstruction() {
   return [
     "回答は基本的にMarkdownで返してください。",
-    "前置き、作業方針、確認中である旨は書かず、テンプレートで指定された最初の項目からすぐに始めてください。",
+    "前置き、作業方針、確認中である旨は書かず、指定された最初の項目からすぐに始めてください。",
     "見出し、箇条書き、太字、引用、コード、必要に応じた表を使い、読みやすい構造にしてください。",
     "タイトルや主要セクションはMarkdown見出しで表現し、長い本文は短い段落に分けてください。"
   ].join("\n");
 }
 
-function buildImageGenerationInstruction(template: PromptTemplate) {
+function buildImageGenerationInstruction() {
   return [
     "画像生成指示:",
     "文章での説明が終わった後に、上記の動画情報、説明文、チャプター、字幕、解説内容をもとに、この動画の内容を1枚で理解できる高密度な日本語インフォグラフィックとして生成してください。",
-    `画像は「${template.label}」の用途に合う構成にしてください。`,
-    template.description ? `重視する観点: ${template.description}` : null,
+    "文章で整理した概要と時刻ごとの詳細を踏まえ、動画全体の流れと重要な内容を振り返れる構成にしてください。",
     "情報の一次的な根拠は元の字幕、動画情報、説明文、チャプターです。解説内容は構成整理に使い、元資料にない主張や数値を作らないでください。字幕から不確かな要素は断定的に描かず、不確かさが重要なら注記してください。",
     "簡素なキービジュアルや、要点を数個だけ置いた余白の多いポスターにはしないでください。日本の詳細なPowerPoint資料やA4の解説シートのような情報密度を目安に、1枚の中へ動画の内容を具体的に詰め込んでください。",
     "タイトルと一文要約を入口にし、動画内に存在する主要論点、話題の順番と転換点、重要な主張、その理由・根拠・数値、具体例、人物・製品・場所・出来事、比較・対立軸、因果関係、結論、注意点を、内容に応じてできるだけ具体的に収録してください。",

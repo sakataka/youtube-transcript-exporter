@@ -64,18 +64,6 @@ export type CodexJobStatus = {
   error?: string;
 };
 
-export type PromptTemplate = {
-  id: string;
-  label: string;
-  description: string;
-  instruction: string;
-};
-
-export type PromptSettings = {
-  defaultTemplateId: string;
-  templates: PromptTemplate[];
-};
-
 export type TranscriptDisplayMode = "plain" | "timestamped";
 
 export type AppSettings = {

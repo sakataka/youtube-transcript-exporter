@@ -1,13 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildAnalysisPrompt, buildFollowUpPrompt } from "./promptBuilder";
-import type { PromptTemplate, TranscriptSuccess } from "./types";
-
-const template: PromptTemplate = {
-  id: "default",
-  label: "概要",
-  description: "要約用",
-  instruction: "1. 概要\n2. 要点"
-};
+import type { TranscriptSuccess } from "./types";
 
 function transcript(partial: Partial<TranscriptSuccess> = {}): TranscriptSuccess {
   return {
@@ -34,7 +27,7 @@ function transcript(partial: Partial<TranscriptSuccess> = {}): TranscriptSuccess
 
 describe("prompt builder", () => {
   test("builds the analysis prompt from explicit inputs", () => {
-    const prompt = buildAnalysisPrompt(transcript(), template, {
+    const prompt = buildAnalysisPrompt(transcript(), {
       includeImageInstruction: true,
       transcriptText: "整形済み字幕",
       captionLabel: "ja (自動字幕)",
@@ -47,6 +40,11 @@ describe("prompt builder", () => {
     expect(prompt).toContain("確認基準日: 2026/05/05");
     expect(prompt).toContain("字幕: ja (自動字幕)");
     expect(prompt).toContain("重要な安全指示:");
+    expect(prompt).toContain("# 1. この動画の概要");
+    expect(prompt).toContain("# 2. 時刻ごとの詳細");
+    expect(prompt).toContain("原則として約5分ごと");
+    expect(prompt).toContain("長い動画や話題のまとまりによっては約10分ごと");
+    expect(prompt).toContain("## 0:00 話題を表す短い見出し");
     expect(prompt).toContain("整形済み字幕");
     expect(prompt).toContain("- 0:02 (https://example.com/watch?t=2s): 最初の説明");
     expect(prompt).toContain("画像生成指示:");
@@ -59,7 +57,7 @@ describe("prompt builder", () => {
   });
 
   test("omits timed reference when transcript display is already timestamped", () => {
-    const prompt = buildAnalysisPrompt(transcript(), template, {
+    const prompt = buildAnalysisPrompt(transcript(), {
       includeImageInstruction: false,
       transcriptText: "0:02 整形済み字幕",
       captionLabel: "ja (自動字幕)",
