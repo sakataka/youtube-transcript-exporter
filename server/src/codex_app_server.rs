@@ -1,6 +1,7 @@
 use crate::debug_log;
 use serde_json::{json, Value};
 use std::{
+    collections::HashSet,
     env,
     io::{BufRead, BufReader, Write},
     path::PathBuf,
@@ -208,8 +209,7 @@ pub fn ask_with_control(
     cleanup_child(&control);
     let _ = stderr_handle.join();
 
-    generated_images.sort();
-    generated_images.dedup();
+    deduplicate_generated_images(&mut generated_images);
     if !generated_images.is_empty() {
         if !final_answer.is_empty() {
             final_answer.push_str("\n\n");
@@ -468,6 +468,7 @@ fn build_image_generation_turn_prompt(source_prompt: &str, source_answer: &str) 
         "- タイトルと一文要約を入口にし、動画内に存在する主要論点、話題の順番と転換点、重要な主張、その理由・根拠・数値、具体例、人物・製品・場所・出来事、比較・対立軸、因果関係、結論、注意点を、内容に応じてできるだけ具体的に収録してください。",
         "- 情報を3〜6個など少数に制限せず、理解に必要な項目を複数のセクションへ階層化してください。ただし同じ内容の言い換えや、根拠のない水増しは避けてください。",
         "- 見出し、短い本文、箇条書き、番号、注釈、矢印、タイムライン、比較表、関係図、フロー図、吹き出し、図表などから内容に適した要素を組み合わせ、視線の流れが明確な紙面として構成してください。すべてを均一なカードに分割する必要はありません。",
+        "- 画像内には、「何分何秒」、`mm:ss`、`h:mm:ss` などの動画内の時刻やタイムコードを入れないでください。話題の順序や流れは、時刻を書かずに見出し、番号、矢印などで表現してください。",
         "- 文字は短いラベルだけに限定せず、読める大きさを保てる範囲で、要点を理解できる具体的な日本語の短文も使ってください。重要度に応じて見出し、本文、注記の文字サイズと視覚的な強弱を明確にしてください。",
         "- 画像内の文章はすべて自然で正確な日本語にしてください。意味不明な文字列、偽漢字、文字化け、脱字、途中で切れた文を入れないでください。正確に描画できない長文は、意味を保った短い日本語へ要約してください。",
         "- 画像の表現スタイル自体も動画内容に合わせて変えてください。ニュース解説なら報道グラフィック風、技術解説なら精密な仕組み図、音楽・カルチャーならポスター風、ビジネスなら編集されたプレゼン図、教育ならノート/教材風、対談なら人物と論点の関係図など、動画ごとに自然な見た目を選んでください。",
@@ -697,6 +698,24 @@ fn image_result_to_markdown(result: &str) -> Option<String> {
     None
 }
 
+fn deduplicate_generated_images(images: &mut Vec<String>) {
+    let mut seen = HashSet::new();
+    images.retain(|image| seen.insert(image_content_key(image).to_string()));
+}
+
+fn image_content_key(image: &str) -> &str {
+    let trimmed = image.trim();
+    let source = trimmed
+        .strip_prefix("![生成画像](")
+        .and_then(|value| value.strip_suffix(')'))
+        .unwrap_or(trimmed);
+
+    source
+        .split_once(";base64,")
+        .map(|(_, payload)| payload)
+        .unwrap_or(source)
+}
+
 fn is_likely_base64_image(value: &str) -> bool {
     value.len() > 128
         && value.chars().all(|character| {
@@ -710,7 +729,7 @@ mod tests {
         append_agent_message_delta, build_image_generation_turn_prompt, build_thread_start_request,
         build_turn_start_request, extract_agent_message_delta, extract_completed_agent_message,
         extract_image_generation_markdown, extract_raw_image_generation_markdown, select_turn_text,
-        AgentMessageText, CODEX_MODEL, CODEX_REASONING_EFFORT,
+        deduplicate_generated_images, AgentMessageText, CODEX_MODEL, CODEX_REASONING_EFFORT,
     };
     use serde_json::json;
 
@@ -743,6 +762,7 @@ mod tests {
         assert!(prompt.contains("日本の詳細なPowerPoint資料やA4の解説シート"));
         assert!(prompt.contains("情報を3〜6個など少数に制限せず"));
         assert!(prompt.contains("意味不明な文字列、偽漢字、文字化け"));
+        assert!(prompt.contains("動画内の時刻やタイムコードを入れない"));
         assert!(prompt.contains("SOURCE_MATERIAL_BEGIN\n動画情報:"));
         assert!(prompt.contains("字幕:\n元字幕の内容\nSOURCE_MATERIAL_END"));
         assert!(prompt.contains("SOURCE_ANSWER_BEGIN\n# 概要\n整理済みの文章回答"));
@@ -955,5 +975,19 @@ mod tests {
 
         let markdown = extract_image_generation_markdown(&message).unwrap();
         assert!(markdown.starts_with("![生成画像](data:image/png;base64,"));
+    }
+
+    #[test]
+    fn deduplicates_the_same_image_across_data_url_mime_variants() {
+        let payload = "a".repeat(160);
+        let mut images = vec![
+            format!("![生成画像](data:image/webp;base64,{payload})"),
+            format!("![生成画像](data:image/png;base64,{payload})"),
+        ];
+
+        deduplicate_generated_images(&mut images);
+
+        assert_eq!(images.len(), 1);
+        assert!(images[0].starts_with("![生成画像](data:image/webp;base64,"));
     }
 }
