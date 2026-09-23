@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { invokeBackend } from "./backendClient";
 import { getCodexAnswerTextForCopy, normalizeCodexAnswerMarkdown } from "./codexAnswerText";
+import { clearPersistedCodexHistory, codexHistoryStorageKey, loadPersistedCodexHistory, persistCodexHistory } from "./codexHistoryStore";
 import { renderMarkdown as renderMarkdownOutput } from "./markdownRenderer";
 import {
   analysisPromptId,
@@ -55,7 +56,6 @@ type DebugLogReadResult = {
 };
 
 const appSettingsStorageKey = "youtube-transcript-exporter.app-settings.v1";
-const codexHistoryStorageKey = "youtube-ai-brief.codex-history.v1";
 const codexHistoryLimit = 20;
 const codexPollIntervalMs = 900;
 const appName = "YouTube AI Brief";
@@ -97,6 +97,7 @@ const uiText = {
     codexHistoryRestored: "履歴からAI回答を復元しました。",
     clearCodexHistory: "履歴をクリア",
     codexHistoryCleared: "AI回答履歴を削除しました。",
+    codexHistorySaveFailed: "AI回答履歴を保存できませんでした。ブラウザの保存領域を確認してください。",
     copyAnswer: "回答をコピー",
     rerunAnswer: "再実行",
     followUpAnswer: "追加質問",
@@ -195,6 +196,7 @@ const uiText = {
     codexHistoryRestored: "Restored an AI answer from history.",
     clearCodexHistory: "Clear history",
     codexHistoryCleared: "Cleared AI answer history.",
+    codexHistorySaveFailed: "Could not save AI answer history. Check browser storage.",
     copyAnswer: "Copy answer",
     rerunAnswer: "Rerun",
     followUpAnswer: "Follow up",
@@ -349,6 +351,18 @@ function App() {
     document.documentElement.lang = appSettings.uiLanguage;
     document.title = appName;
   }, [appSettings.uiLanguage]);
+
+  useEffect(() => {
+    let active = true;
+    void loadPersistedCodexHistory(loadCodexHistory(), codexHistoryLimit)
+      .then((stored) => {
+        if (active && Array.isArray(stored)) {
+          setHistory(stored.map(normalizeCodexHistoryEntry).filter((entry): entry is CodexHistoryEntry => Boolean(entry)).slice(0, codexHistoryLimit));
+        }
+      })
+      .catch(() => { if (active) showMessage(t("codexHistorySaveFailed"), true); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -785,11 +799,7 @@ function App() {
     };
     setHistory((current) => {
       const next = [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, codexHistoryLimit);
-      try {
-        localStorage.setItem(codexHistoryStorageKey, JSON.stringify(next));
-      } catch {
-        // History is best-effort and must not discard the completed answer.
-      }
+      void persistCodexHistory(next).catch(() => showMessage(t("codexHistorySaveFailed"), true));
       return next;
     });
   }
@@ -812,8 +822,9 @@ function App() {
 
   function clearHistory() {
     setHistory([]);
-    localStorage.removeItem(codexHistoryStorageKey);
-    showMessage(t("codexHistoryCleared"));
+    void clearPersistedCodexHistory()
+      .then(() => showMessage(t("codexHistoryCleared")))
+      .catch(() => showMessage(t("codexHistorySaveFailed"), true));
   }
 
   function openSettings() {

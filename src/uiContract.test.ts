@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 const mainSource = await Bun.file(new URL("./main.tsx", import.meta.url)).text();
+const historyStoreSource = await Bun.file(new URL("./codexHistoryStore.ts", import.meta.url)).text();
 const promptBuilderSource = await Bun.file(new URL("./promptBuilder.ts", import.meta.url)).text();
 const styleSource = await Bun.file(new URL("./style.css", import.meta.url)).text();
 
@@ -36,7 +37,7 @@ describe("UI regression contract", () => {
   test("keeps app settings and history schemas without prompt-template persistence", () => {
     expect(mainSource).not.toContain('youtube-transcript-exporter.prompt-settings.v1');
     expect(mainSource).toContain('youtube-transcript-exporter.app-settings.v1');
-    expect(mainSource).toContain('youtube-ai-brief.codex-history.v1');
+    expect(historyStoreSource).toContain('youtube-ai-brief.codex-history.v1');
   });
 
   test("keeps the fixed prompt focused on an overview and linked timeline detail", () => {

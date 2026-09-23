@@ -177,7 +177,7 @@ pub fn ask_with_control(
     let mut final_answer = first_turn.text;
     let mut generated_images = first_turn.images;
 
-    if generate_image && !final_answer.trim().is_empty() {
+    if generate_image && !final_answer.trim().is_empty() && generated_images.is_empty() {
         let image_prompt = build_image_generation_turn_prompt(prompt, &final_answer);
         let image_turn_started_at = Instant::now();
         let image_turn = run_turn(
@@ -316,7 +316,8 @@ fn run_turn(
     let mut line = String::new();
     let mut delta_messages: Vec<AgentMessageText> = Vec::new();
     let mut completed_messages: Vec<AgentMessageText> = Vec::new();
-    let mut generated_images: Vec<String> = Vec::new();
+    let mut app_images: Vec<String> = Vec::new();
+    let mut raw_images: Vec<String> = Vec::new();
 
     loop {
         if control.is_cancelled() {
@@ -367,7 +368,7 @@ fn run_turn(
                     completed_messages.push(message);
                 }
                 if let Some(image_markdown) = extract_image_generation_markdown(&message) {
-                    generated_images.push(image_markdown);
+                    app_images.push(image_markdown);
                 }
             }
             "rawResponseItem/completed" => {
@@ -380,7 +381,7 @@ fn run_turn(
                     }),
                 );
                 if let Some(image_markdown) = image_markdown {
-                    generated_images.push(image_markdown);
+                    raw_images.push(image_markdown);
                 }
             }
             "turn/completed" => {
@@ -391,6 +392,9 @@ fn run_turn(
     }
 
     let text = select_turn_text(&completed_messages, &delta_messages);
+    // The app-server and raw-response notifications can describe the same image
+    // with different encodings. The product requests exactly one image per turn.
+    let generated_images = select_generated_image(app_images, raw_images);
 
     debug_log::append_event(
         "codex_app_server.turn.completed",
@@ -703,6 +707,17 @@ fn deduplicate_generated_images(images: &mut Vec<String>) {
     images.retain(|image| seen.insert(image_content_key(image).to_string()));
 }
 
+fn select_generated_image(app_images: Vec<String>, raw_images: Vec<String>) -> Vec<String> {
+    let images: Vec<String> = app_images.into_iter().chain(raw_images).collect();
+    images
+        .iter()
+        .find(|image| image.starts_with("![生成画像]("))
+        .or_else(|| images.first())
+        .cloned()
+        .into_iter()
+        .collect()
+}
+
 fn image_content_key(image: &str) -> &str {
     let trimmed = image.trim();
     let source = trimmed
@@ -729,7 +744,7 @@ mod tests {
         append_agent_message_delta, build_image_generation_turn_prompt, build_thread_start_request,
         build_turn_start_request, extract_agent_message_delta, extract_completed_agent_message,
         extract_image_generation_markdown, extract_raw_image_generation_markdown, select_turn_text,
-        deduplicate_generated_images, AgentMessageText, CODEX_MODEL, CODEX_REASONING_EFFORT,
+        deduplicate_generated_images, select_generated_image, AgentMessageText, CODEX_MODEL, CODEX_REASONING_EFFORT,
     };
     use serde_json::json;
 
@@ -989,5 +1004,32 @@ mod tests {
 
         assert_eq!(images.len(), 1);
         assert!(images[0].starts_with("![生成画像](data:image/webp;base64,"));
+    }
+
+    #[test]
+    fn selects_one_app_image_when_raw_event_contains_another_encoding() {
+        let images = select_generated_image(
+            vec!["![生成画像](data:image/webp;base64,app)".to_string()],
+            vec!["![生成画像](data:image/png;base64,raw)".to_string()],
+        );
+        assert_eq!(images, vec!["![生成画像](data:image/webp;base64,app)"]);
+    }
+
+    #[test]
+    fn falls_back_to_one_raw_image_when_app_event_is_absent() {
+        let images = select_generated_image(
+            Vec::new(),
+            vec!["first".to_string(), "second".to_string()],
+        );
+        assert_eq!(images, vec!["first"]);
+    }
+
+    #[test]
+    fn prefers_raw_image_over_app_saved_path_message() {
+        let images = select_generated_image(
+            vec!["生成画像は `image.png` に保存されました。".to_string()],
+            vec!["![生成画像](data:image/png;base64,raw)".to_string()],
+        );
+        assert_eq!(images, vec!["![生成画像](data:image/png;base64,raw)"]);
     }
 }
